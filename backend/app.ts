@@ -25,6 +25,7 @@ app.use('/api/v1/users', userRoutes);
 // health route
 app.get('/api/v1/health', (req, res) => {
     res.status(200).json({
+        success: true,
         message: 'Server is running'
     })
 })
