@@ -1,9 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import { catchAsyncError } from "../middleware/catchAsyncError";
 import ErrorHandler from "../utils/ErrorHandler";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { sendMail } from "../utils/sendMail";
-import { createActivationToken, createDashboardAccessToken, encryptedPassword, verifyToken } from "../services/user.service";
+import { createActivationToken, encryptedPassword, generateTokens, verifyPassword, verifyRefreshToken, verifyToken } from "../services/user.service";
+import jwt, { JwtPayload } from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,7 +48,7 @@ export const registerUser = catchAsyncError(async (req: Request, res: Response, 
         const userDoc: IuserRegistration = {
             name,
             email,
-            password : encryptPassword,
+            password: encryptPassword,
         }
         // now create an user in database
         const user = await prisma.user.create({
@@ -96,7 +97,7 @@ export const registerUser = catchAsyncError(async (req: Request, res: Response, 
     }
 });
 
-export const verifyUser = catchAsyncError(async(req:Request,res:Response,next:NextFunction)=>{
+export const verifyUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { otp, token } = req.query;
 
@@ -104,26 +105,130 @@ export const verifyUser = catchAsyncError(async(req:Request,res:Response,next:Ne
             return res.status(400).json({ error: 'OTP and Token are required' });
         }
 
-        if(!await verifyToken(token as string,otp as string)){
+        if (!await verifyToken(token as string, otp as string)) {
             return res.status(501).json({
                 success: false,
                 message: 'Account cannot be verified.',
             })
         }
-        // create new token for access the dashboard
 
-        const accessToken =  await createDashboardAccessToken();
+        const decodedToken = jwt.verify(token as string, process.env.JWT_SECRET!) as JwtPayload;
+
+        const user = await prisma.user.findUnique({ where: { id: (decodedToken as any).id } });
+        if(!user) return;
+        // create new token for access the dashboard
+        const { accessToken, refreshToken } = await generateTokens(user);
 
         return res.status(200)
-        .cookie("jwt",accessToken)
-        .json({
-            success: true,
-            message: 'Account verified successfully.',
-            token: accessToken
-        })
+            .cookie("access_token", accessToken, {
+                httpOnly: true,
+                maxAge: 5 * 60 * 1000 // 5 minutes
+            })
+            .cookie("refresh_token", refreshToken, {
+                httpOnly: true,
+                maxAge: 59 * 60 * 1000 // 59 minutes
+            })
+            .json({
+                success: true,
+                message: 'Account verified successfully.',
+                token: accessToken
+            })
 
-    } catch (error:any) {
+    } catch (error: any) {
         console.log(error);
         return next(new ErrorHandler(400, error.message));
     }
+});
+
+export const reverifyUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+
+    } catch (error: any) {
+        console.log(error);
+        return next(new ErrorHandler(400, error.message));
+    }
+})
+
+export const refreshAccessToken = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+    const refreshToken = req.cookies.refresh_token || req.body.refresh_token;
+
+    if (!refreshToken) {
+        return next(new ErrorHandler(401, "No refresh token provided"));
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    if (!decoded || typeof decoded === "string") {
+        return next(new ErrorHandler(403, "Invalid or expired refresh token"));
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: (decoded as any).id } });
+    if (!user) {
+        return next(new ErrorHandler(404, "User not found"));
+    }
+
+    const { accessToken } = await generateTokens(user);
+
+    res
+        .cookie("access_token", accessToken, {
+            httpOnly: true,
+            maxAge: 5 * 60 * 1000
+        })
+        .json({
+            success: true,
+            accessToken
+        });
+});
+
+export const loginUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return next(new ErrorHandler(400, "Email and password are required"));
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+        return next(new ErrorHandler(400, "Invalid email or password"));
+    }
+
+    const isPasswordValid = await verifyPassword(password, user.password);
+    if (!isPasswordValid) {
+        return next(new ErrorHandler(400, "Invalid email or password"));
+    }
+
+    if (!user.isVerified) {
+        return next(new ErrorHandler(403, "Please verify your account first"));
+    }
+
+    const { accessToken, refreshToken } = await generateTokens(user);
+
+    const existingData = (user.extended as Prisma.JsonObject) || {};
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            extended: {
+                ...existingData,
+                refreshToken,
+            },
+        },
+    });
+
+
+    return res
+        .status(200)
+        .cookie("access_token", accessToken, {
+            httpOnly: true,
+            maxAge: 5 * 60 * 1000 // 5 minutes
+        })
+        .cookie("refresh_token", refreshToken, {
+            httpOnly: true,
+            maxAge: 59 * 60 * 1000 // 59 minutes
+        })
+        .json({
+            success: true,
+            message: "Login successful",
+            accessToken,
+            refreshToken
+        });
 });

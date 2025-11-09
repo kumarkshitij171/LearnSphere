@@ -1,3 +1,5 @@
+// npx prisma db push
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,6 +18,7 @@ model User {
   password   String // hashed password get stored here
   courses    String[] // store course id that user purchased
   avatar     String?
+  extended   Json? 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

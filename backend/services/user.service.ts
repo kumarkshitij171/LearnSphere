@@ -19,7 +19,7 @@ export const createActivationToken = async (user: Iuser): Promise<IactivationTok
         {
             id: user.id,
             name: user.name,
-            activationCode:encryptActivationCode
+            activationCode: encryptActivationCode
         },
         process.env.JWT_SECRET!,
         {
@@ -36,7 +36,7 @@ export const verifyToken = async (token: string, otp: string): Promise<boolean> 
     try {
         const decodedToken = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
         if ('activationCode' in decodedToken) {
-            const otpVerified = await verifyPassword(otp,decodedToken.activationCode);
+            const otpVerified = await verifyPassword(otp, decodedToken.activationCode);
             if (!otpVerified) return false;
 
             const id: string = decodedToken?.id;
@@ -66,6 +66,34 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
     return await bcrypt.compare(password + BCRYPT_PEPPER, hash);
 };
 
-export const createDashboardAccessToken = async (): Promise<string> => {
-    return "token_value";
+export const generateTokens = async (user: Iuser) => {
+    const accessToken = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.ACCESS_TOKEN_SECRET!,
+        { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "5m" }
+    );
+
+    const refreshToken = jwt.sign(
+        { id: user.id },
+        process.env.REFRESH_TOKEN_SECRET!,
+        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "59m" }
+    );
+
+    return { accessToken, refreshToken };
+};
+
+export const verifyAccessToken = (token: string) => {
+    try {
+        return jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!);
+    } catch {
+        return null;
+    }
+};
+
+export const verifyRefreshToken = (token: string) => {
+    try {
+        return jwt.verify(token, process.env.REFRESH_TOKEN_SECRET!);
+    } catch {
+        return null;
+    }
 };

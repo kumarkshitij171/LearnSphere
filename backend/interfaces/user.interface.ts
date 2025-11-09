@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 
 export interface Iuser {
     id: string;
@@ -8,6 +9,7 @@ export interface Iuser {
     password: string;
     courses: string[];
     avatar?: string | null;
+    extended?: Prisma.JsonValue | null;
     createdAt: Date;
     updatedAt: Date;
 }
