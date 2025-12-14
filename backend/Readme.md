@@ -11,13 +11,10 @@ Follow the steps below to run it locally with **PostgreSQL** + **Redis** using D
 Copy the sample `.env` file and configure:
 ```bash
 cp .env.sample .env
-Update .env with your own values:
 
+# Update .env with your own values:
 DATABASE_URL=postgres://testUser:mysecretpassword@localhost:5432/testDB
-
 REDIS_URI=rediss://default:local@localhost:6379
-
-JWT_SECRET=jwt_secret
 ```
 
 2️⃣ Install Dependencies

@@ -18,7 +18,7 @@ model User {
   password   String // hashed password get stored here
   courses    String[] // store course id that user purchased
   avatar     String?
-  extended   Json? 
+  extended   Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -30,6 +30,9 @@ model Course {
   price       Float
   thumbnail   String
   author      String
+  // review
+  // comments
+  // links
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { Iuser } from "../interfaces/user.interface";
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import bcrypt from "bcryptjs";
+import { redis } from "../utils/redis";
 
 interface IactivationToken {
     token: string;
@@ -67,18 +68,43 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
 };
 
 export const generateTokens = async (user: Iuser) => {
+    const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY || "5m";
+    const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY || "59m";
+    
     const accessToken = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         process.env.ACCESS_TOKEN_SECRET!,
-        { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "5m" }
+        { expiresIn: accessTokenExpiry }
     );
 
     const refreshToken = jwt.sign(
         { id: user.id },
         process.env.REFRESH_TOKEN_SECRET!,
-        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "59m" }
+        { expiresIn: refreshTokenExpiry }
     );
-
+    
+    // Calculate TTL in seconds from expiry string (e.g., "59m" -> 3540 seconds)
+    const getTTLInSeconds = (expiry: string): number => {
+        const match = expiry.match(/^(\d+)([smhd])$/);
+        if (!match) return 3540; // Default to 59 minutes if format is invalid
+        
+        const value = parseInt(match[1]);
+        const unit = match[2];
+        
+        switch (unit) {
+            case 's': return value;
+            case 'm': return value * 60;
+            case 'h': return value * 60 * 60;
+            case 'd': return value * 24 * 60 * 60;
+            default: return 3540;
+        }
+    };
+    
+    const ttl = getTTLInSeconds(refreshTokenExpiry);
+    
+    // Save user session with TTL matching refresh token expiration
+    await redis.setex(user.id.toString(), ttl, JSON.stringify(user));
+    
     return { accessToken, refreshToken };
 };
 
