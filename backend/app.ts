@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import userRoutes from './routes/user.routes';
 import { ErrorMiddleWare } from './middleware/error';
 import rateLimit from 'express-rate-limit';
+import videoUploadRoutes from './routes/videoUpload.routes';
 
 dotenv.config();
 
@@ -60,6 +61,7 @@ app.use('/api/v1', generalLimiter);
 app.use('/api/v1/users/login', authLimiter);
 app.use('/api/v1/users/register', authLimiter);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/video-upload', videoUploadRoutes);
 
 // health route
 app.get('/api/v1/health', (req, res) => {
