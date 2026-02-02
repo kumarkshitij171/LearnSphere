@@ -10,6 +10,9 @@ import { randomUUID } from 'crypto';
 
 type PresignedUploadResponse = { url: string; key: string };
 
+/** For flow: presign → upload to S3 → POST /videos. Key = videoId/original.mp4 so transcoder gets clear path. */
+export type PresignedVideoUploadResponse = { url: string; key: string; videoId: string };
+
 const createS3Client = () =>
   new S3Client({
     region: process.env.AWS_REGION || 'us-east-1',
@@ -92,6 +95,35 @@ export const generatePresignedUploadURL = async (
   });
 
   return { url, key };
+};
+
+/**
+ * Generate presigned URL for video upload with a known videoId.
+ * S3 key: {videoId}/original.mp4 (under raw bucket). Used by: presign → frontend uploads → POST /videos.
+ */
+export const generatePresignedUploadURLForVideo = async (
+  videoId: string,
+  contentType: string
+): Promise<PresignedVideoUploadResponse> => {
+  const bucket = process.env.S3_RAW_VIDEO_BUCKET;
+  if (!bucket) {
+    throw new Error('S3_RAW_VIDEO_BUCKET is not configured');
+  }
+  await ensureBucketExists(bucket);
+
+  const key = `${videoId}/original.mp4`;
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const url = await getSignedUrl(s3Client, command, {
+    expiresIn: parseInt(process.env.PRESIGNED_URL_EXPIRY || '3600', 10),
+  });
+
+  return { url, key, videoId };
 };
 
 export const generatePresignedDownloadURL = async (

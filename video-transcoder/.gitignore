@@ -139,3 +139,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# video (ignore contents of constants, keep .gitkeep so directory is tracked)
+src/constants/*
+!src/constants/.gitkeep

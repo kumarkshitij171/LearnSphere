@@ -1,0 +1,87 @@
+// npx prisma db push
+// npx prisma generate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       String
+  isVerified Boolean  @default(false)
+  password   String // hashed password get stored here
+  courses    String[] // store course id that user purchased
+  avatar     String?
+  extended   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  Video      Video[]
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  thumbnail   String
+  author      String
+  // review
+  // comments
+  // links
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  videos      Video[]
+}
+
+model Video {
+  id            String              @id @default(uuid())
+  userId        String
+  originalKey   String // S3 key for original video
+  fileName      String
+  fileSize      Int
+  mimeType      String
+  status        VideoStatus         @default(PENDING)
+  resolutions   Json // Array of transcoded resolutions
+  metadata      Json? // Video metadata (duration, codec, etc.)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  user          User                @relation(fields: [userId], references: [id])
+  transcodeJobs VideoTranscodeJob[]
+  Course        Course?             @relation(fields: [courseId], references: [id])
+  courseId      String?
+}
+
+model VideoTranscodeJob {
+  id         String    @id @default(uuid())
+  videoId    String
+  resolution String // e.g., "1080p", "720p", "480p"
+  status     JobStatus @default(QUEUED)
+  inputKey   String
+  outputKey  String?
+  error      String?
+  progress   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  video      Video     @relation(fields: [videoId], references: [id])
+}
+
+enum VideoStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
