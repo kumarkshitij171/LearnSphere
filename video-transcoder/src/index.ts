@@ -19,12 +19,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT: number = Number(config.port) || 7000;
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    message: "Video Transcoding Service is running",
-    status: "healthy",
-  });
-});
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "healthy" });
 });

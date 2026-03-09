@@ -51,16 +51,6 @@ async function setupFFmpeg() {
   }
 }
 
-/**
- * Transcode input to HLS: per-resolution playlists + segments, then master.m3u8.
- * Output layout:
- *   outputDir/
- *     master.m3u8
- *     240p/playlist.m3u8, 240p/segment_000.ts, ...
- *     480p/...
- *     720p/...
- *     1080p/...
- */
 async function transcodeToHLS(inputPath, outputDir) {
   const hlsDir = join(outputDir, 'hls');
   if (!existsSync(hlsDir)) {
