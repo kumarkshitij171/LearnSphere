@@ -1,4 +1,4 @@
-// npx prisma db push
+// npx prisma migrate dev --name <migration_name>
 
 generator client {
   provider = "prisma-client-js"
@@ -9,76 +9,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  name       String
-  role       String
-  isVerified Boolean  @default(false)
-  password   String // hashed password get stored here
-  courses    String[] // store course id that user purchased
-  avatar     String?
-  extended   Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  Video      Video[]
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
 }
 
-model Course {
-  id          String   @id @default(cuid())
-  title       String
-  description String
-  price       Float
-  thumbnail   String
-  author      String
-  // review
-  // comments
-  // links
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  videos      Video[]
+enum CourseStatus {
+  DRAFT
+  UNDER_REVIEW
+  PUBLISHED
+  ARCHIVED
 }
 
-model Video {
-  id              String              @id @default(uuid())
-  userId          String
-  originalKey     String // S3 key for original video (e.g. raw-videos/videoId/original.mp4)
-  title           String
-  description     String?
-  duration        Int? // duration in seconds
-  fileName        String? // original file name
-  fileSize        Int? // original file size in bytes
-  mimeType        String
-  status          VideoStatus        @default(UPLOADED)
-  hlsMasterPath   String? // S3 key for HLS master playlist (e.g. processed-videos/videoId/master.m3u8)
-  resolutions     Json? // Array of transcoded resolution metadata
-  metadata        Json? // Video metadata (codec, etc.)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  user            User               @relation(fields: [userId], references: [id])
-  transcodeJobs   VideoTranscodeJob[]
-  Course          Course?            @relation(fields: [courseId], references: [id])
-  courseId        String?
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
 }
 
-model VideoTranscodeJob {
-  id         String    @id @default(uuid())
-  videoId    String
-  resolution String // e.g., "1080p", "720p", "480p"
-  status     JobStatus @default(QUEUED)
-  inputKey   String
-  outputKey  String?
-  error      String?
-  progress   Int       @default(0)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  video      Video     @relation(fields: [videoId], references: [id])
+enum LessonType {
+  VIDEO
+  TEXT
+  QUIZ
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
 }
 
 enum VideoStatus {
-  UPLOADED    // Video uploaded to S3, awaiting transcoding
-  TRANSCODING // Transcoder is processing
-  READY       // HLS available, ready for playback
+  UPLOADED
+  TRANSCODING
+  READY
   FAILED
 }
 
@@ -87,4 +58,353 @@ enum JobStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       UserRole @default(STUDENT)
+  isVerified Boolean  @default(false)
+  isBanned   Boolean  @default(false)
+  password   String
+  avatar     String?
+  bio        String?
+  extended   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  instructorProfile InstructorProfile?
+  videos            Video[]
+  enrollments       Enrollment[]
+  orders            Order[]
+  reviews           Review[]
+  quizAttempts      QuizAttempt[]
+  certificates      Certificate[]
+  questionsAsked    LessonQuestion[]
+  answers           LessonAnswer[]
+}
+
+model InstructorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  bio             String?
+  headline        String?
+  website         String?
+  socialLinks     Json?
+  isApproved      Boolean  @default(false)
+  rejectionReason String?
+  totalStudents   Int      @default(0)
+  totalRevenue    Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courses Course[]
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  parentId  String?
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+  courses   Course[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Course {
+  id              String       @id @default(cuid())
+  title           String
+  slug            String       @unique
+  description     String
+  price           Float        @default(0)
+  thumbnail       String?
+  previewVideoUrl String?
+  level           CourseLevel  @default(BEGINNER)
+  status          CourseStatus @default(DRAFT)
+  language        String       @default("English")
+  requirements    String[]
+  learnings       String[]
+  tags            String[]
+
+  totalDuration Int   @default(0)
+  totalLectures Int   @default(0)
+  totalStudents Int   @default(0)
+  rating        Float @default(0)
+  reviewCount   Int   @default(0)
+
+  instructorId  String
+  instructor    InstructorProfile @relation(fields: [instructorId], references: [id])
+  categoryId    String?
+  category      Category?         @relation(fields: [categoryId], references: [id])
+  adminFeedback String?
+
+  sections    Section[]
+  enrollments Enrollment[]
+  orders      Order[]
+  reviews     Review[]
+  coupons     Coupon[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Section {
+  id        String   @id @default(cuid())
+  title     String
+  order     Int
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Lesson {
+  id        String     @id @default(cuid())
+  title     String
+  order     Int
+  type      LessonType @default(VIDEO)
+  isFree    Boolean    @default(false)
+  sectionId String
+  section   Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  videoId     String?
+  video       Video?  @relation(fields: [videoId], references: [id])
+  textContent String?
+  duration    Int? // seconds (for VIDEO type)
+
+  quiz        Quiz?
+  attachments LessonAttachment[]
+  progress    LessonProgress[]
+  questions   LessonQuestion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LessonAttachment {
+  id        String   @id @default(cuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  name      String
+  s3Key     String
+  fileSize  Int?
+  mimeType  String?
+  createdAt DateTime @default(now())
+}
+
+model Enrollment {
+  id       String  @id @default(cuid())
+  userId   String
+  courseId String
+  orderId  String? @unique
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  order  Order? @relation(fields: [orderId], references: [id])
+
+  lessonProgress LessonProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+}
+
+model LessonProgress {
+  id             String    @id @default(cuid())
+  enrollmentId   String
+  lessonId       String
+  isCompleted    Boolean   @default(false)
+  watchedSeconds Int       @default(0)
+  completedAt    DateTime?
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([enrollmentId, lessonId])
+}
+
+// ─── Orders & Payments ───────────────────────────────────────────────────────
+
+model Order {
+  id                 String      @id @default(cuid())
+  userId             String
+  courseId           String
+  amount             Float
+  currency           String      @default("USD")
+  status             OrderStatus @default(PENDING)
+  stripePaymentId    String?
+  couponId           String?
+  platformFeePercent Float       @default(30)
+  instructorRevenue  Float
+  platformRevenue    Float
+
+  user       User        @relation(fields: [userId], references: [id])
+  course     Course      @relation(fields: [courseId], references: [id])
+  coupon     Coupon?     @relation(fields: [couponId], references: [id])
+  enrollment Enrollment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id           String       @id @default(cuid())
+  code         String       @unique
+  discountType DiscountType
+  discount     Float
+  maxUses      Int?
+  usedCount    Int          @default(0)
+  expiresAt    DateTime?
+  courseId     String?
+  course       Course?      @relation(fields: [courseId], references: [id])
+  orders       Order[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Quiz {
+  id       String @id @default(cuid())
+  lessonId String @unique
+  passMark Int    @default(70)
+
+  lesson    Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts  QuizAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Question {
+  id          String  @id @default(cuid())
+  quizId      String
+  type        String // "MCQ" | "TRUE_FALSE"
+  text        String
+  options     Json // [{id, text, isCorrect}]
+  explanation String?
+  order       Int
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QuizAttempt {
+  id      String  @id @default(cuid())
+  quizId  String
+  userId  String
+  answers Json // {questionId: selectedOptionId}
+  score   Int
+  passed  Boolean
+
+  quiz Quiz @relation(fields: [quizId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Certificate {
+  id               String @id @default(cuid())
+  userId           String
+  courseId         String
+  pdfUrl           String
+  verificationUuid String @unique @default(uuid())
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model Review {
+  id       String  @id @default(cuid())
+  userId   String
+  courseId String
+  rating   Int
+  body     String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+}
+
+model LessonQuestion {
+  id       String @id @default(cuid())
+  lessonId String
+  userId   String
+  title    String
+  body     String
+
+  lesson  Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id])
+  answers LessonAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LessonAnswer {
+  id                 String  @id @default(cuid())
+  questionId         String
+  userId             String
+  body               String
+  isInstructorAnswer Boolean @default(false)
+
+  question LessonQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Video {
+  id            String      @id @default(uuid())
+  userId        String
+  originalKey   String
+  title         String
+  description   String?
+  duration      Int?
+  fileName      String?
+  fileSize      Int?
+  mimeType      String
+  status        VideoStatus @default(UPLOADED)
+  hlsMasterPath String?
+  resolutions   Json?
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User                @relation(fields: [userId], references: [id])
+  transcodeJobs VideoTranscodeJob[]
+  lessons       Lesson[]
+}
+
+model VideoTranscodeJob {
+  id         String    @id @default(uuid())
+  videoId    String
+  resolution String
+  status     JobStatus @default(QUEUED)
+  inputKey   String
+  outputKey  String?
+  error      String?
+  progress   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  video Video @relation(fields: [videoId], references: [id])
 }

@@ -1,5 +1,39 @@
-node_modules 
-.env
+node_modules
+.pnpm-store
 data
 data/db
-.pnpm-store
+CLAUDE.md
+.vscode
+
+# Environment files
+# .env is ignored because it may contain plain secrets in dev
+# Commit the encrypted version instead: dotenvx encrypt
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# dotenvx private keys — NEVER commit these
+# Public keys in .env.keys are safe to commit (encrypted files need them)
+# But private keys decrypt them, so exclude the whole file for safety
+.env.keys
+
+# Allow .env.sample (template without real values)
+!.env.sample
+
+# Build outputs
+dist
+.next
+out
+build
+
+# Makefile runtime files
+.pids/
+.logs/
+
+# IDE
+.DS_Store
+.idea
+*.swp
+*.swo
