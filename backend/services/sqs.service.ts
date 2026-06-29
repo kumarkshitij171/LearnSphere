@@ -4,6 +4,7 @@ import {
   SQSClient,
   ReceiveMessageCommandInput,
 } from '@aws-sdk/client-sqs';
+import { awsClientConfig } from '../config/awsConfig';
 
 type RawSqsMessage = { body: any; receiptHandle: string };
 
@@ -16,22 +17,11 @@ type StartSQSConsumerOptions = {
   abortSignal?: AbortSignal;
 };
 
-const createSQSClient = () =>
-  new SQSClient({
-    region: process.env.AWS_REGION || 'us-east-1',
-    endpoint: process.env.SQS_ENDPOINT || undefined,
-    credentials:
-      process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
-        ? {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-          }
-        : undefined,
-  });
+const createSQSClient = () => new SQSClient(awsClientConfig());
 
 const sqsClient = createSQSClient();
 
-const parseMessageBody = (body?: string) => {
+export const parseMessageBody = (body?: string) => {
   if (!body) return {};
 
   try {

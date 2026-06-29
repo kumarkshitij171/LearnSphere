@@ -92,6 +92,37 @@ export const refreshTokenSchema = Joi.object({
         .allow('')
 });
 
+// Course creation validation schema
+export const createCourseSchema = Joi.object({
+    title: Joi.string().trim().min(3).max(150).required().messages({
+        'string.empty': 'Title is required',
+        'string.min': 'Title must be at least 3 characters long',
+        'any.required': 'Title is required'
+    }),
+    description: Joi.string().trim().min(10).max(5000).required().messages({
+        'string.empty': 'Description is required',
+        'string.min': 'Description must be at least 10 characters long',
+        'any.required': 'Description is required'
+    }),
+    price: Joi.number().min(0).optional(),
+    thumbnail: Joi.string().uri().optional().allow(null, '')
+});
+
+// Course update validation schema (all fields optional)
+export const updateCourseSchema = Joi.object({
+    title: Joi.string().trim().min(3).max(150).optional(),
+    description: Joi.string().trim().min(10).max(5000).optional(),
+    price: Joi.number().min(0).optional(),
+    thumbnail: Joi.string().uri().optional().allow(null, ''),
+    isPublished: Joi.boolean().optional()
+}).min(1);
+
+// Video update validation schema (title/description only; all optional)
+export const updateVideoSchema = Joi.object({
+    title: Joi.string().trim().min(1).max(200).optional(),
+    description: Joi.string().trim().max(5000).optional().allow(null, '')
+}).min(1);
+
 // Validation middleware
 export const validate = (schema: Joi.ObjectSchema) => {
     return (req: any, res: any, next: any) => {

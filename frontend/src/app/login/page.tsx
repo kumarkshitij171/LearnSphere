@@ -1,17 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { AuthShell } from '@/components/auth-shell';
+import { useGuestOnly } from '@/hooks/useGuestOnly';
+import { usersApi, getApiErrorMessage } from '@/lib/api';
+import {
+  Loader2,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+  ArrowRight,
+} from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const checkingSession = useGuestOnly();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -20,6 +31,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -60,137 +73,205 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const baseURL =
-        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001';
-
-      await axios.post(
-        `${baseURL}/api/v1/users/login`,
-        {
-          email: formData.email,
-          password: formData.password,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          withCredentials: true,
-        }
-      );
+      await usersApi.login({
+        email: formData.email,
+        password: formData.password,
+      });
 
       setSuccessMessage('Signed in successfully.');
-      router.push('/');
-    } catch (error: any) {
+      router.push('/dashboard');
+    } catch (error) {
       console.error('Login error:', error);
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        'Something went wrong while signing in.';
-      setApiError(message);
+      setApiError(
+        getApiErrorMessage(error, 'Something went wrong while signing in.')
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
+  const needsVerification =
+    apiError != null && apiError.toLowerCase().includes('verify');
+
+  const handleResendVerification = async () => {
+    setIsResending(true);
+    setApiError(null);
+    try {
+      await usersApi.reverifyEmail(formData.email);
+      // The reverify endpoint emails a fresh code and sets the token cookie
+      // that the /verify page reads to confirm the OTP.
+      router.push(`/verify?email=${encodeURIComponent(formData.email)}`);
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      setApiError(
+        getApiErrorMessage(
+          error,
+          'Could not resend the verification email. Please try again.'
+        )
+      );
+      setIsResending(false);
+    }
+  };
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </main>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 px-4">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center">Welcome back</CardTitle>
-          <CardDescription className="text-center">
-            Sign in to your account or{' '}
-            <Link
-              href="/signup"
-              className="font-medium text-primary hover:underline"
-            >
-              create a new account
-            </Link>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            {apiError && (
-              <p className="text-sm text-destructive bg-red-50 border border-red-200 rounded px-3 py-2">
-                {apiError}
-              </p>
-            )}
-            {successMessage && (
-              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-                {successMessage}
-              </p>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="you@example.com"
-                className={errors.email ? 'border-destructive' : ''}
-              />
-              {errors.email && (
-                <p className="text-sm text-destructive">{errors.email}</p>
+    <AuthShell>
+      <div className="space-y-2">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          Welcome back
+        </h1>
+        <p className="text-muted-foreground">
+          Don&apos;t have an account?{' '}
+          <Link
+            href="/signup"
+            className="font-medium text-primary transition-colors hover:underline"
+          >
+            Create one for free
+          </Link>
+        </p>
+      </div>
+
+      <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+        {apiError && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
+            <div className="space-y-1.5">
+              <span>{apiError}</span>
+              {needsVerification && (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={isResending}
+                  className="flex items-center gap-1.5 font-medium text-destructive underline underline-offset-4 hover:opacity-80 disabled:opacity-60"
+                >
+                  {isResending ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Sending verification email...
+                    </>
+                  ) : (
+                    'This account is not verified — click here to verify'
+                  )}
+                </button>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter your password"
-                className={errors.password ? 'border-destructive' : ''}
-              />
-              {errors.password && (
-                <p className="text-sm text-destructive">{errors.password}</p>
-              )}
-            </div>
+          </div>
+        )}
+        {successMessage && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-sm text-emerald-400">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none" />
+            <span>{successMessage}</span>
+          </div>
+        )}
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring"
-                />
-                <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                  Remember me
-                </Label>
-              </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email address</Label>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="you@example.com"
+              aria-invalid={!!errors.email}
+              className={`pl-10 ${
+                errors.email
+                  ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
+                  : ''
+              }`}
+            />
+          </div>
+          {errors.email && (
+            <p className="text-sm text-destructive">{errors.email}</p>
+          )}
+        </div>
 
-              <Link
-                href="/forgot-password"
-                className="text-sm text-primary hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full"
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <div className="relative">
+            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter your password"
+              aria-invalid={!!errors.password}
+              className={`pl-10 pr-10 ${
+                errors.password
+                  ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
+                  : ''
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
               ) : (
-                'Sign in'
+                <Eye className="h-4 w-4" />
               )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+            </button>
+          </div>
+          {errors.password && (
+            <p className="text-sm text-destructive">{errors.password}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between">
+          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground">
+            <input
+              id="remember-me"
+              name="remember-me"
+              type="checkbox"
+              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-primary accent-primary focus:ring-primary focus:ring-offset-0"
+            />
+            Remember me
+          </label>
+
+          <Link
+            href="/forgot-password"
+            className="text-sm font-medium text-primary transition-colors hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
+
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="group h-11 w-full text-base"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            <>
+              Sign in
+              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </>
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

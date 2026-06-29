@@ -1,14 +1,14 @@
-import { Redis } from "ioredis"
-import dotenv from "dotenv"
-dotenv.config()
+import { Redis } from "ioredis";
 
-const redisClient = () => {
-    if (process.env.REDIS_URI) {
-        console.log("Redis is connected")
-        return process.env.REDIS_URI
+// Lazy client so importing this module never crashes boot when REDIS_URI is unset.
+let client: Redis | null = null;
+
+export const getRedis = (): Redis => {
+    if (!client) {
+        if (!process.env.REDIS_URI) {
+            throw new Error("REDIS_URI is not defined");
+        }
+        client = new Redis(process.env.REDIS_URI);
     }
-    // if not have redis url give the error
-    throw new Error("Redis URI is not defined")
-}
-
-export const redis = new Redis(redisClient())
+    return client;
+};

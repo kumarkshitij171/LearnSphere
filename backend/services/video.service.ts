@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { publishVideoUploaded } from './kafka.service';
+import { deleteVideoS3Artifacts } from './s3.service';
 
 const prisma = new PrismaClient();
 
@@ -8,6 +9,7 @@ const RESOLUTIONS = ['240p', '480p', '720p', '1080p'];
 export interface CreateVideoInput {
   videoId: string;
   userId: string;
+  courseId: string;
   originalKey: string;
   title: string;
   description?: string;
@@ -27,6 +29,7 @@ export const createVideoRecord = async (input: CreateVideoInput) => {
     data: {
       id: input.videoId,
       userId: input.userId,
+      courseId: input.courseId,
       originalKey: input.originalKey,
       title: input.title,
       description: input.description ?? null,
@@ -85,4 +88,24 @@ export const getVideoById = async (videoId: string) => {
     where: { id: videoId },
     include: { user: { select: { id: true, name: true, email: true } } },
   });
+};
+
+export interface UpdateVideoInput {
+  title?: string;
+  description?: string | null;
+}
+
+export const updateVideoRecord = async (videoId: string, data: UpdateVideoInput) =>
+  prisma.video.update({ where: { id: videoId }, data });
+
+// Removes transcode jobs + the video row, then best-effort deletes its S3 artifacts.
+export const deleteVideoRecord = async (videoId: string) => {
+  const video = await prisma.video.findUnique({ where: { id: videoId } });
+  if (!video) return null;
+
+  await prisma.videoTranscodeJob.deleteMany({ where: { videoId } });
+  await prisma.video.delete({ where: { id: videoId } });
+  await deleteVideoS3Artifacts(video.originalKey, video.id);
+
+  return video;
 };

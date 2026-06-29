@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: testDB
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -101,21 +101,7 @@ services:
     networks:
       - kafka-network
 
-  # Local S3
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    restart: always
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-
+  # Local AWS (S3 + SQS + SNS)
   localstack:
     image: localstack/localstack:latest
     container_name: localstack
@@ -123,7 +109,7 @@ services:
     ports:
       - "4566:4566" # LocalStack edge port
     environment:
-      SERVICES: sqs
+      SERVICES: s3,sqs,sns
       AWS_DEFAULT_REGION: us-east-1
       DEBUG: 1
     volumes:
@@ -161,7 +147,6 @@ volumes:
   redis_data:
   pgadmin_data:
   kafka_data:
-  minio_data:
   localstack_data:
   mongo_data:
 

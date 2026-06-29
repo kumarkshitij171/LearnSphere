@@ -18,9 +18,31 @@ export interface VideoUploadedEvent {
 }
 
 const TOPIC_VIDEO_UPLOADED = process.env.KAFKA_TOPIC_VIDEO_UPLOADED || 'video.uploaded';
+const TOPIC_PARTITIONS = Number(process.env.KAFKA_TOPIC_PARTITIONS) || 3;
+
+let topicsEnsured = false;
+
+// Pre-creates the topic and waits for its partition leader so the first
+// produce never races topic auto-creation ("does not host this topic-partition").
+export const ensureKafkaTopics = async (): Promise<void> => {
+  if (topicsEnsured) return;
+  const admin = kafka.admin();
+  await admin.connect();
+  try {
+    await admin.createTopics({
+      topics: [{ topic: TOPIC_VIDEO_UPLOADED, numPartitions: TOPIC_PARTITIONS }],
+      waitForLeaders: true,
+    });
+    topicsEnsured = true;
+    console.log(`[Kafka] Ensured topic '${TOPIC_VIDEO_UPLOADED}' (${TOPIC_PARTITIONS} partition(s))`);
+  } finally {
+    await admin.disconnect();
+  }
+};
 
 export const getKafkaProducer = async (): Promise<Producer> => {
   if (producer) return producer;
+  await ensureKafkaTopics();
   producer = kafka.producer();
   await producer.connect();
   return producer;

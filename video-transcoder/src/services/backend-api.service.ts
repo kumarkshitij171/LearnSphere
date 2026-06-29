@@ -1,7 +1,7 @@
 import { logger } from '../utils/logger.js';
 
 const getBackendBaseUrl = (): string => {
-  const url = process.env.BACKEND_API_URL || 'http://localhost:4000';
+  const url = process.env.BACKEND_API_URL || 'http://localhost:5001';
   return url.replace(/\/$/, '');
 };
 

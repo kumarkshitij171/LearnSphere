@@ -6,6 +6,9 @@ import userRoutes from './routes/user.routes';
 import { ErrorMiddleWare } from './middleware/error';
 import rateLimit from 'express-rate-limit';
 import videoUploadRoutes from './routes/videoUpload.routes';
+import courseRoutes from './routes/course.routes';
+import instructorRequestRoutes from './routes/instructorRequest.routes';
+import adminRoutes from './routes/admin.routes';
 
 dotenv.config();
 
@@ -37,9 +40,11 @@ const authLimiter = rateLimit({
 // General rate limiter
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: Number(process.env.RATE_LIMIT_MAX) || 1000, // per IP per window
     standardHeaders: true,
     legacyHeaders: false,
+    // Don't throttle the transcoder's internal status callbacks (API-key authed).
+    skip: (req) => Boolean(req.headers['x-transcoder-api-key']),
 });
 
 // body parser
@@ -62,6 +67,9 @@ app.use('/api/v1/users/login', authLimiter);
 app.use('/api/v1/users/register', authLimiter);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/video-upload', videoUploadRoutes);
+app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/instructor-requests', instructorRequestRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // health route
 app.get('/api/v1/health', (req, res) => {

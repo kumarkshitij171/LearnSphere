@@ -1,10 +1,12 @@
 import { Iuser } from "../interfaces/user.interface";
+import { Course } from "@prisma/client";
 import { Request } from "express";
-// adding one extra optional property in the request from the express
+// extra optional properties attached by auth/ownership middleware
 declare global{
     namespace Express{
         interface Request{
             user?: Iuser
+            course?: Course
         }
     }
 }

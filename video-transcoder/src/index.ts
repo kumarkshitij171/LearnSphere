@@ -1,8 +1,6 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
 import { config } from "./config/conf.js";
 import { logger } from "./utils/logger.js";
 import {
@@ -11,10 +9,8 @@ import {
   type VideoTranscodeMessage,
 } from "./services/kafka.service.js";
 import { transcodeVideo } from "./services/transcode.service.js";
+import { getS3ObjectStream } from "./services/s3.service.js";
 import { markVideoProcessed } from "./services/backend-api.service.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT: number = Number(config.port) || 7000;
@@ -25,8 +21,6 @@ app.get("/health", (_req, res) => {
 
 app.use(express.json());
 
-const hlsTestDir = path.resolve(__dirname, "..", "src", "constants", "out", "hls");
-
 const corsOrigin = process.env.CORS_ALLOW_ORIGIN || "http://localhost:3000";
 const hlsCors = cors({
   origin: corsOrigin === "*" ? "*" : corsOrigin.split(",").map((o) => o.trim()),
@@ -34,27 +28,46 @@ const hlsCors = cors({
   allowedHeaders: ["Range"],
 });
 
-function contentTypeFor(filename: string): string {
-  if (filename.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
-  if (filename.endsWith(".ts")) return "video/MP2T";
-  return "application/octet-stream";
-}
-
 app.use("/api/video-transcoder/hls", hlsCors);
 
-app.use("/api/video-transcoder/hls", (req, res) => {
-  const requestedPath = (req.url || "").replace(/^\//, "").replace(/\?.*$/, "") || "master.m3u8";
-  const safePath = path.normalize(requestedPath).replace(/^(\.\.(\/|\\))+/, "");
-  const filePath = path.resolve(path.join(hlsTestDir, safePath));
-  const rootDir = path.resolve(hlsTestDir);
-  if (!filePath.startsWith(rootDir) || path.relative(rootDir, filePath).startsWith("..")) {
+// Serve HLS (master/variant playlists + .ts segments) straight from the
+// processed-video S3 bucket. Key = the path after the mount, e.g.
+// `{videoId}/master.m3u8`. Relative refs inside the playlists resolve under
+// this same base, so segment requests map back to `{videoId}/...` keys.
+app.use("/api/video-transcoder/hls", async (req, res) => {
+  const requestedPath =
+    decodeURIComponent((req.url || "").replace(/^\//, "").replace(/\?.*$/, "")) || "master.m3u8";
+  const safePath = path.posix.normalize(requestedPath).replace(/^(\.\.(\/|\\))+/, "");
+  if (safePath.startsWith("..") || path.posix.isAbsolute(safePath)) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-    return res.status(404).json({ error: "Not found" });
+
+  const bucket = config.s3?.processedVideoBucket;
+  if (!bucket) {
+    return res.status(500).json({ error: "Processed video bucket not configured" });
   }
-  res.setHeader("Content-Type", contentTypeFor(path.basename(filePath)));
-  res.sendFile(filePath);
+
+  try {
+    const obj = await getS3ObjectStream(bucket, safePath, req.headers.range);
+    res.status(obj.statusCode);
+    res.setHeader("Content-Type", obj.contentType);
+    if (obj.contentLength != null) res.setHeader("Content-Length", String(obj.contentLength));
+    if (obj.acceptRanges) res.setHeader("Accept-Ranges", obj.acceptRanges);
+    if (obj.contentRange) res.setHeader("Content-Range", obj.contentRange);
+    obj.body.on("error", (err) => {
+      logger.error("HLS stream error", { key: safePath, err });
+      if (!res.headersSent) res.status(500).json({ error: "Stream error" });
+      else res.destroy();
+    });
+    obj.body.pipe(res);
+  } catch (err: any) {
+    const code = err?.name || err?.Code;
+    if (code === "NoSuchKey" || code === "NotFound" || err?.$metadata?.httpStatusCode === 404) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    logger.error("Failed to fetch HLS object from S3", { key: safePath, err: err?.message });
+    return res.status(500).json({ error: "Internal error" });
+  }
 });
 
 /**

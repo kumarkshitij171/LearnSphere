@@ -3,19 +3,26 @@ import { catchAsyncError } from "../middleware/catchAsyncError";
 import ErrorHandler from "../utils/ErrorHandler";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { sendMail } from "../utils/sendMail";
-import { createActivationToken, encryptedPassword, generateTokens, verifyPassword, verifyRefreshToken, verifyToken } from "../services/user.service";
+import { createActivationToken, encryptedPassword, generateAccessToken, generateTokens, hashToken, verifyPassword, verifyRefreshToken, verifyToken } from "../services/user.service";
 import jwt, { JwtPayload } from 'jsonwebtoken';
-import { redis } from "../utils/redis";
 import { validatePassword } from "../utils/passwordValidation";
 
 const prisma = new PrismaClient();
+
+const REFRESH_COOKIE_PATH = '/api/v1/users/refresh-token';
 
 const refreshTokenOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict' as const,
-    maxAge: 59 * 60 * 1000 // 59 minutes
+    path: REFRESH_COOKIE_PATH,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 }
+
+const deviceContext = (req: Request) => ({
+    userAgent: req.headers['user-agent'],
+    ip: req.ip,
+});
 
 const accessTokenOptions = {
     httpOnly: true,
@@ -67,7 +74,7 @@ export const registerUser = catchAsyncError(async (req: Request, res: Response, 
                 email: userDoc.email,
                 password: userDoc.password,
                 avatar,
-                role: 'user',
+                role: 'STUDENT',
                 isVerified: false,
                 courses: []
             }
@@ -156,7 +163,7 @@ export const verifyUser = catchAsyncError(async (req: Request, res: Response, ne
         const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
 
         // create new token for access the dashboard
-        const { accessToken, refreshToken } = await generateTokens(user);
+        const { accessToken, refreshToken } = await generateTokens(user, deviceContext(req));
 
         const response = res.status(200);
         
@@ -186,7 +193,58 @@ export const verifyUser = catchAsyncError(async (req: Request, res: Response, ne
 
 export const reverifyUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
     try {
-        //! TODO: will be implement in future
+        const email = (req.query.email as string)?.trim().toLowerCase();
+
+        if (!email) {
+            return next(new ErrorHandler(400, "Email is required"));
+        }
+
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        if (!user) {
+            return next(new ErrorHandler(404, "No account found with this email"));
+        }
+
+        if (user.isVerified) {
+            return next(new ErrorHandler(400, "Account is already verified. Please log in."));
+        }
+
+        // create a fresh activation code + token
+        const { token, activationCode } = await createActivationToken(user);
+        const activationUrl = `${process.env.CLIENT_URL}/verify?otp=${activationCode}&token=${token}`;
+
+        // resend activation mail to user email
+        await sendMail({
+            email: user.email,
+            subject: 'Account Activation',
+            template: 'activationMail',
+            data: {
+                activationCode,
+                name: user.name,
+                activationUrl
+            }
+        });
+
+        // Check if request is from mobile app
+        const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
+
+        const response = res.status(200);
+
+        if (!isMobileApp) {
+            // Web app: set token cookie so the /verify page can read it (httpOnly)
+            response.cookie('token', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                expires: new Date(Date.now() + 24 * 60 * 60 * 5000) // 5 days
+            });
+        }
+
+        return response.json({
+            success: true,
+            message: 'Verification email sent. Please check your inbox.',
+            ...(isMobileApp && { token })
+        });
     } catch (error: any) {
         console.log(error);
         return next(new ErrorHandler(400, error.message));
@@ -203,41 +261,43 @@ export const refreshAccessToken = catchAsyncError(async (req: Request, res: Resp
 
     const decoded = verifyRefreshToken(refreshToken);
     if (!decoded || typeof decoded === "string") {
-        return next(new ErrorHandler(403, "Invalid or expired refresh token"));
+        return next(new ErrorHandler(401, "Invalid or expired refresh token"));
     }
 
-    const session = await redis.get(decoded.id);
-    if (!session) {
-        return next(new ErrorHandler(401, "Session expired. Please login again"));
-    }
-    
-    let user;
-    try {
-        user = JSON.parse(session);
-    } catch (error) {
-        return next(new ErrorHandler(500, "Invalid session data"));
-    }
-    
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) {
         return next(new ErrorHandler(404, "User not found"));
+    }
+
+    // Validate against the single session stored on the user row. The presented
+    // token must match the stored SHA-256 hash and not be past its expiry.
+    const session = (user.extended as Prisma.JsonObject | null)?.session as
+        | { refreshTokenHash?: string; expiresAt?: string }
+        | undefined;
+
+    const expired = session?.expiresAt ? new Date(session.expiresAt) <= new Date() : true;
+    if (!session?.refreshTokenHash || expired || session.refreshTokenHash !== hashToken(refreshToken)) {
+        return next(new ErrorHandler(401, "Session expired. Please login again"));
     }
 
     // Check if request is from mobile app
     const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
 
-    const { accessToken, refreshToken: newRefreshToken } = await generateTokens(user);
+    // No rotation: mint only a new access token. The refresh token (and its
+    // cookie) are left untouched, which also makes concurrent refreshes safe.
+    const accessToken = generateAccessToken(user);
 
     const response = res.status(200);
-    
+
     if (!isMobileApp) {
-        // Web app: set cookie
+        // Web app: refresh only the access-token cookie.
         response.cookie("access_token", accessToken, accessTokenOptions);
     }
 
     return response.json({
         success: true,
-        accessToken,
-        ...(isMobileApp && { refreshToken: newRefreshToken })
+        message: "Token refreshed",
+        ...(isMobileApp && { accessToken })
     });
 });
 
@@ -266,21 +326,12 @@ export const loginUser = catchAsyncError(async (req: Request, res: Response, nex
     // Check if request is from mobile app
     const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
 
-    const { accessToken, refreshToken } = await generateTokens(user);
-
-    const existingData = (user.extended as Prisma.JsonObject) || {};
-    await prisma.user.update({
-        where: { id: user.id },
-        data: {
-            extended: {
-                ...existingData,
-                refreshToken,
-            },
-        },
-    });
+    // generateTokens persists the session (hashed refresh token + expiry +
+    // device) on the user row, so no separate update is needed here.
+    const { accessToken, refreshToken } = await generateTokens(user, deviceContext(req));
 
     const response = res.status(200);
-    
+
     if (!isMobileApp) {
         // Web app: set cookies
         response.cookie("access_token", accessToken, accessTokenOptions)
@@ -297,20 +348,45 @@ export const loginUser = catchAsyncError(async (req: Request, res: Response, nex
     });
 });
 
+export const getCurrentUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+
+    if (!userId) {
+        return next(new ErrorHandler(401, "Unauthorized"));
+    }
+
+    // isAuthenticated is stateless (only id/email/role from the JWT), so load
+    // the full profile from the DB here.
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+        return next(new ErrorHandler(404, "User not found"));
+    }
+
+    // Never leak the password hash (or the session secrets) to the client.
+    const { password, extended, ...safeUser } = user;
+
+    return res.status(200).json({
+        success: true,
+        user: safeUser,
+    });
+});
+
 export const logoutUser = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // Clear cookies for web apps
-        res.cookie("access_token", "", { 
+        // Clear cookies for web apps. The refresh cookie MUST be cleared at the
+        // same scoped path it was set with, or the browser won't delete it.
+        res.cookie("access_token", "", {
             maxAge: 1,
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict'
         });
-        res.cookie("refresh_token", "", { 
+        res.cookie("refresh_token", "", {
             maxAge: 1,
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict'
+            sameSite: 'strict',
+            path: REFRESH_COOKIE_PATH
         });
 
         const userId = req?.user?.id;
@@ -318,9 +394,11 @@ export const logoutUser = catchAsyncError(async (req: Request, res: Response, ne
             return next(new ErrorHandler(401, "Unauthorized"));
         }
 
-        const existingData = (req?.user?.extended as Prisma.JsonObject) || {};
-
-        const { refreshToken: _removed, ...updatedExtended } = existingData;
+        // Revoke the session by clearing it from the user row (req.user no longer
+        // carries `extended`, so read the current value from the DB).
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        const existingData = (user?.extended as Prisma.JsonObject) || {};
+        const { session: _removed, ...updatedExtended } = existingData;
 
         await prisma.user.update({
             where: { id: userId },
@@ -329,7 +407,6 @@ export const logoutUser = catchAsyncError(async (req: Request, res: Response, ne
             },
         });
 
-        await redis.del(userId);
         return res.status(200).json({
             success: true,
             message: "Logout successful",

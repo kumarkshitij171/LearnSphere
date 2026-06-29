@@ -163,7 +163,9 @@ export const transcodeVideo = async (
       })),
     };
   } catch (error: any) {
-    logger.error('Transcoding failed', { error: error?.message });
+    logger.error(`Transcoding failed: ${error?.name || 'Error'}: ${error?.message || error}`, {
+      stack: error?.stack,
+    });
     cleanupTempFiles(cleanupPaths);
     return {
       success: false,

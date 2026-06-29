@@ -5,7 +5,14 @@ import {
   generatePresignedUploadURL,
   generatePresignedUploadURLForVideo,
 } from '../services/s3.service';
-import { createVideoRecord, markVideoProcessed, getVideoById } from '../services/video.service';
+import {
+  createVideoRecord,
+  markVideoProcessed,
+  getVideoById,
+  updateVideoRecord,
+  deleteVideoRecord,
+} from '../services/video.service';
+import { isEnrolled } from '../services/course.service';
 import { randomUUID } from 'crypto';
 
 /** Legacy: presigned URL with random key (uploads/userId/uuid-filename). */
@@ -55,6 +62,7 @@ export const confirmVideoUpload = catchAsyncError(
     }
     const {
       videoId,
+      courseId,
       originalS3Path,
       originalKey,
       title,
@@ -65,9 +73,9 @@ export const confirmVideoUpload = catchAsyncError(
       fileSize,
     } = req.body;
 
-    if (!videoId || !title || !mimeType) {
+    if (!videoId || !courseId || !title || !mimeType) {
       return next(
-        new ErrorHandler(400, 'videoId, title, and mimeType are required')
+        new ErrorHandler(400, 'videoId, courseId, title, and mimeType are required')
       );
     }
 
@@ -89,6 +97,7 @@ export const confirmVideoUpload = catchAsyncError(
     const video = await createVideoRecord({
       videoId,
       userId,
+      courseId,
       originalKey: key,
       title,
       description,
@@ -162,6 +171,19 @@ export const getVideo = catchAsyncError(
     if (!video) {
       return next(new ErrorHandler(404, 'Video not found'));
     }
+
+    // Owner/admin always; otherwise the requester must be enrolled in the course.
+    const isOwner = video.userId === req.user!.id;
+    const isAdmin = req.user!.role === 'ADMIN';
+    if (!isOwner && !isAdmin) {
+      const enrolled = video.courseId
+        ? await isEnrolled(req.user!.id, video.courseId)
+        : false;
+      if (!enrolled) {
+        return next(new ErrorHandler(403, 'You must be enrolled to view this video'));
+      }
+    }
+
     return res.status(200).json({
       success: true,
       video: {
@@ -174,5 +196,52 @@ export const getVideo = catchAsyncError(
         createdAt: video.createdAt,
       },
     });
+  }
+);
+
+// The uploader is the course's instructor; admins always pass.
+const canManageVideo = (video: { userId: string }, req: Request) =>
+  req.user!.role === 'ADMIN' || video.userId === req.user!.id;
+
+/** PATCH /videos/:videoId — update title/description (owner/admin). */
+export const updateVideo = catchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { videoId } = req.params;
+    const video = await getVideoById(videoId);
+    if (!video) return next(new ErrorHandler(404, 'Video not found'));
+    if (!canManageVideo(video, req)) {
+      return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+    }
+
+    const { title, description } = req.body;
+    const updated = await updateVideoRecord(videoId, {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+    });
+
+    return res.status(200).json({
+      success: true,
+      video: {
+        id: updated.id,
+        title: updated.title,
+        description: updated.description,
+        status: updated.status,
+      },
+    });
+  }
+);
+
+/** DELETE /videos/:videoId — remove the video + its S3 artifacts (owner/admin). */
+export const deleteVideo = catchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { videoId } = req.params;
+    const video = await getVideoById(videoId);
+    if (!video) return next(new ErrorHandler(404, 'Video not found'));
+    if (!canManageVideo(video, req)) {
+      return next(new ErrorHandler(403, 'You do not have permission to delete this video'));
+    }
+
+    await deleteVideoRecord(videoId);
+    return res.status(200).json({ success: true, message: 'Video deleted' });
   }
 );

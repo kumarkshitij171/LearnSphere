@@ -17,7 +17,7 @@ import { join } from 'path';
 import { config } from '../config/conf.js';
 import { logger } from '../utils/logger.js';
 
-// Initialize S3 client (omit endpoint when undefined for AWS; set for MinIO/local)
+// Endpoint is set for LocalStack and omitted for real AWS.
 const s3Client = new S3Client({
   region: config.aws.region || 'us-east-1',
   credentials: {
@@ -104,6 +104,38 @@ const contentTypeFor = (key: string): string => {
   if (key.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
   if (key.endsWith('.ts')) return 'video/MP2T';
   return 'application/octet-stream';
+};
+
+export interface S3ObjectStream {
+  body: NodeJS.ReadableStream;
+  contentType: string;
+  contentLength?: number | undefined;
+  contentRange?: string | undefined;
+  acceptRanges?: string | undefined;
+  statusCode: number; // 200, or 206 for a satisfied Range request
+}
+
+/**
+ * Stream an object out of S3 for HLS playback (playlists + segments).
+ * Passes through an optional HTTP Range so seeking works on segments.
+ */
+export const getS3ObjectStream = async (
+  bucket: string,
+  key: string,
+  range?: string
+): Promise<S3ObjectStream> => {
+  const res = await s3Client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: range } : {}) })
+  );
+  if (!res.Body) throw new Error('Empty response body from S3');
+  return {
+    body: res.Body as NodeJS.ReadableStream,
+    contentType: res.ContentType || contentTypeFor(key),
+    contentLength: res.ContentLength,
+    contentRange: res.ContentRange,
+    acceptRanges: res.AcceptRanges,
+    statusCode: res.ContentRange ? 206 : 200,
+  };
 };
 
 /**

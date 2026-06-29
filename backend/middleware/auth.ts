@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { catchAsyncError } from "./catchAsyncError";
 import ErrorHandler from "../utils/ErrorHandler";
 import jwt, { JwtPayload } from 'jsonwebtoken';
-import { redis } from "../utils/redis";
+import { Iuser } from "../interfaces/user.interface";
 
 export const isAuthenticated = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
     // Support both cookie (web) and Authorization header or body (mobile)
@@ -21,18 +21,12 @@ export const isAuthenticated = catchAsyncError(async (req: Request, res: Respons
             return next(new ErrorHandler(401, "Access token is not valid"));
         }
         
-        // check the user in redis
-        const user = await redis.get(decodedToken.id);
-        if (!user) {
-            return next(new ErrorHandler(401, "Session expired. Please login again"));
-        }
-        
-        try {
-            req.user = JSON.parse(user);
-        } catch (error) {
-            return next(new ErrorHandler(500, "Invalid session data"));
-        }
-        
+        req.user = {
+            id: decodedToken.id,
+            email: decodedToken.email,
+            role: decodedToken.role,
+        } as Iuser;
+
         next();
     } catch (error: any) {
         if (error.name === 'JsonWebTokenError') {
@@ -52,7 +46,10 @@ export const authorizedRoles = (...roles: string[]) => {
         if (!req?.user?.role) {
             return next(new ErrorHandler(403, "User role not found"));
         }
-        
+
+        // Admin has every permission.
+        if (req.user.role === 'ADMIN') return next();
+
         if (!roles.includes(req.user.role)) {
             return next(new ErrorHandler(403, `Role ${req.user.role} is not allowed to access this resource`));
         }

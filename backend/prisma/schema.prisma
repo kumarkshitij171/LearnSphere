@@ -10,33 +10,61 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  name       String
-  role       String
-  isVerified Boolean  @default(false)
-  password   String // hashed password get stored here
-  courses    String[] // store course id that user purchased
-  avatar     String?
-  extended   Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  Video      Video[]
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  name               String
+  role               Role                @default(STUDENT)
+  isVerified         Boolean             @default(false)
+  password           String // hashed password get stored here
+  courses            String[] // legacy; Enrollment is the source of truth
+  avatar             String?
+  extended           Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  Video              Video[]
+  coursesAuthored    Course[]            @relation("CourseInstructor")
+  enrollments        Enrollment[]
+  instructorRequests InstructorRequest[]
 }
 
 model Course {
-  id          String   @id @default(cuid())
-  title       String
-  description String
-  price       Float
-  thumbnail   String
-  author      String
-  // review
-  // comments
-  // links
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  videos      Video[]
+  id           String       @id @default(cuid())
+  title        String
+  description  String
+  price        Float        @default(0)
+  thumbnail    String?
+  isPublished  Boolean      @default(false)
+  instructorId String
+  instructor   User         @relation("CourseInstructor", fields: [instructorId], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  videos       Video[]
+  enrollments  Enrollment[]
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  userId     String
+  courseId   String
+  enrolledAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  course     Course   @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+model InstructorRequest {
+  id         String                  @id @default(cuid())
+  userId     String
+  status     InstructorRequestStatus @default(PENDING)
+  message    String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  user       User                    @relation(fields: [userId], references: [id])
+
+  @@index([status])
 }
 
 model Video {
@@ -73,6 +101,18 @@ model VideoTranscodeJob {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   video      Video     @relation(fields: [videoId], references: [id])
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum InstructorRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum VideoStatus {
