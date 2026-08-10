@@ -23,18 +23,23 @@ help:
 	@echo ""
 	@echo "  Services: infra localstack backend frontend transcoder notification"
 
-# Run the selected SERVICES together under one process group; Ctrl-C stops all.
+# Start infrastructure first, then run the selected application services together
+# under one process group; Ctrl-C stops all.
 start:
 	@echo "Starting: $(SERVICES)"
+	@if echo " $(SERVICES) " | grep -q " infra "; then \
+		$(MAKE) --no-print-directory infra; \
+	fi
 	@trap 'kill 0' INT TERM; \
 	for svc in $(SERVICES); do \
+		[ "$$svc" = "infra" ] && continue; \
 		$(MAKE) --no-print-directory $$svc & \
 	done; \
 	wait
 
 # Local infra via docker compose (postgres, redis, kafka, localstack, mongo, UIs).
 infra:
-	docker compose up -d
+	docker compose up -d --wait
 
 # Standalone LocalStack (s3 + sqs + sns) using the dedicated compose file.
 localstack:
