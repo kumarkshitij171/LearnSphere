@@ -2,26 +2,45 @@
 #
 # Start everything:        make start
 # Start chosen services:   make start SERVICES="backend frontend"
-# Single service:          make backend   (or frontend / transcoder / infra / notification)
+# Single service:          make backend   (or frontend / transcoder / infra / notification / order)
 # Infra control:           make stop | restart | logs | ps
+# Dependencies:            make install   (every service)    ·   make test   (every suite)
 #
-# Available services: infra localstack backend frontend transcoder notification
+# Available services: infra localstack backend frontend transcoder notification order
 
-SERVICES ?= infra backend frontend transcoder
+SERVICES ?= infra backend frontend transcoder order notification
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start stop restart logs ps \
-        infra localstack backend frontend transcoder notification
+.PHONY: help install test start stop restart logs ps \
+        infra localstack backend frontend transcoder notification order
 
 help:
 	@echo "LearnSphere dev commands:"
-	@echo "  make start                                 start infra + backend + frontend + transcoder"
+	@echo "  make start                                 start infra + every service"
 	@echo "  make start SERVICES=\"backend frontend\"      start only the listed services"
-	@echo "  make infra | localstack | backend | frontend | transcoder | notification"
+	@echo "  make infra | localstack | backend | frontend | transcoder | notification | order"
 	@echo "  make stop | restart | logs | ps"
+	@echo "  make install                              install dependencies for every service"
+	@echo "  make test                                 run every service's test suite"
 	@echo ""
-	@echo "  Services: infra localstack backend frontend transcoder notification"
+	@echo "  Services: infra localstack backend frontend transcoder notification order"
+
+# Each service with its own package manager. Maven skips tests here: order-service's suite
+# needs Docker (Testcontainers) — run `make test` for that.
+install:
+	@echo "==> backend (npm)" && cd backend && npm install && npx prisma generate
+	@echo "==> frontend (npm)" && cd frontend && npm install
+	@echo "==> video-transcoder" && cd video-transcoder && npm install
+	@echo "==> order-service (maven)" && cd order-service && ./mvnw -B clean install -DskipTests
+	@echo "==> notification-service (maven)" && cd notification-service && ./mvnw -B clean install -DskipTests
+	@echo "All dependencies installed."
+
+test:
+	@echo "==> backend" && cd backend && npm test
+	@echo "==> video-transcoder" && cd video-transcoder && npm test
+	@echo "==> order-service" && cd order-service && ./mvnw -B test
+	@echo "==> notification-service" && cd notification-service && ./mvnw -B test
 
 # Start infrastructure first, then run the selected application services together
 # under one process group; Ctrl-C stops all.
@@ -52,10 +71,13 @@ frontend:
 	cd frontend && npm run dev
 
 transcoder:
-	cd video-transcoder && pnpm dev
+	cd video-transcoder && npm run dev
 
 notification:
 	cd notification-service && ./mvnw spring-boot:run
+
+order:
+	cd order-service && ./mvnw spring-boot:run
 
 stop:
 	docker compose down

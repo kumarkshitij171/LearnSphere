@@ -1,0 +1,221 @@
+// LearnSphere data model across three stores (entity-relationship-diagram)
+// Source of truth: DATABASE_DESIGN.md. Verified against backend/prisma/schema.prisma.
+//
+// Three stores, three owners. Only same-store relations below are real foreign
+// keys; cross-store links are joins by convention carried in events, never FKs.
+
+title LearnSphere Data Model
+
+// ---------- Postgres schema "public" - owned by backend, Prisma db push ----------
+
+User [icon: user, color: blue] {
+  id string pk
+  email string unique
+  name string
+  role Role
+  isVerified boolean
+  password string
+  courses "string[]"
+  avatar string
+  extended json
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+Course [icon: book, color: blue] {
+  id string pk
+  title string
+  description string
+  price float
+  currency string
+  thumbnail string
+  isPublished boolean
+  instructorId string fk
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+Enrollment [icon: check-circle, color: blue] {
+  id string pk
+  userId string fk
+  courseId string fk
+  orderId string unique
+  source EnrollmentSource
+  enrolledAt timestamp
+  revokedAt timestamp
+}
+
+InstructorRequest [icon: user-plus, color: blue] {
+  id string pk
+  userId string fk
+  status InstructorRequestStatus
+  message string
+  reviewedBy string
+  reviewedAt timestamp
+}
+
+Video [icon: video, color: blue] {
+  id uuid pk
+  userId string fk
+  courseId string fk
+  originalKey string
+  title string
+  mimeType string
+  duration int
+  fileSize int
+  status VideoStatus
+  hlsMasterPath string
+  resolutions json
+  metadata json
+}
+
+VideoTranscodeJob [icon: settings, color: blue] {
+  id uuid pk
+  videoId uuid fk
+  resolution string
+  status JobStatus
+  inputKey string
+  outputKey string
+  progress int
+  error string
+}
+
+// ---------- Postgres schema "orders" - owned by order-service, Flyway ----------
+
+orders [icon: shopping-cart, color: orange] {
+  id uuid pk
+  tenant_id varchar
+  user_id varchar
+  user_email varchar
+  course_id varchar
+  course_title varchar
+  instructor_id varchar
+  amount_minor bigint
+  currency char3
+  status OrderStatus
+  provider PaymentProviderType
+  idempotency_key varchar
+  expires_at timestamptz
+  paid_at timestamptz
+  version bigint
+}
+
+payments [icon: credit-card, color: orange] {
+  id uuid pk
+  order_id uuid fk
+  provider PaymentProviderType
+  provider_order_id varchar
+  provider_payment_id varchar
+  status PaymentStatus
+  amount_minor bigint
+  currency char3
+  method varchar
+  error_code varchar
+  raw_payload jsonb
+}
+
+refunds [icon: rotate-ccw, color: orange] {
+  id uuid pk
+  payment_id uuid fk
+  provider_refund_id varchar unique
+  amount_minor bigint
+  status RefundStatus
+  reason varchar
+  requested_by varchar
+}
+
+order_events [icon: list, color: orange] {
+  id uuid pk
+  order_id uuid fk
+  from_status varchar
+  to_status varchar
+  reason varchar
+  actor Actor
+  created_at timestamptz
+}
+
+webhook_events [icon: inbox, color: orange] {
+  id uuid pk
+  provider PaymentProviderType
+  provider_event_id varchar
+  event_type varchar
+  signature_valid boolean
+  payload jsonb
+  status WebhookStatus
+  processed_at timestamptz
+}
+
+outbox [icon: send, color: orange] {
+  id bigint pk
+  aggregate_type varchar
+  aggregate_id varchar
+  topic varchar
+  message_key varchar
+  payload jsonb
+  published_at timestamptz
+  attempts int
+  last_error varchar
+}
+
+// ---------- MongoDB - owned by notification-service ----------
+
+templates [icon: file-text, color: green] {
+  id string pk
+  tenantId string
+  name string
+  channel ChannelType
+  subject string
+  templateMessage string
+  templateVariables map
+  active boolean
+  version int
+}
+
+notifications [icon: bell, color: green] {
+  id string pk
+  notificationId string
+  tenantId string
+  userId string
+  channel ChannelType
+  target string
+  templateName string
+  variables map
+  status NotificationStatus
+  attempts int
+  provider string
+  providerMessageId string
+  errorType ErrorType
+}
+
+device_tokens [icon: smartphone, color: green] {
+  id string pk
+  tenantId string
+  userId string
+  token string unique
+  platform Platform
+  active boolean
+}
+
+// ---------- real foreign keys, within one store ----------
+
+Course.instructorId > User.id
+Enrollment.userId > User.id
+Enrollment.courseId > Course.id
+InstructorRequest.userId > User.id
+Video.userId > User.id
+Video.courseId > Course.id
+VideoTranscodeJob.videoId > Video.id
+
+payments.order_id > orders.id
+refunds.payment_id > payments.id
+order_events.order_id > orders.id
+
+notifications.templateName > templates.name
+
+// ---------- cross-store joins - NOT foreign keys ----------
+// orders.user_id      -> User.id            carried in order.paid
+// orders.course_id    -> Course.id          snapshotted at order creation
+// Enrollment.orderId  -> orders.id          provenance written by the consumer
+// notifications.userId-> User.id            carried in NotificationMessage
+
+Enrollment.orderId > orders.id

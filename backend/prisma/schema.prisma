@@ -25,6 +25,8 @@ model User {
   coursesAuthored    Course[]            @relation("CourseInstructor")
   enrollments        Enrollment[]
   instructorRequests InstructorRequest[]
+  uiConfigVersions   UiConfigVersion[]
+  uiConfigDraft      UiConfigDraft?
 }
 
 model Course {
@@ -32,6 +34,7 @@ model Course {
   title        String
   description  String
   price        Float        @default(0)
+  currency     String       @default("INR")
   thumbnail    String?
   isPublished  Boolean      @default(false)
   instructorId String
@@ -43,12 +46,15 @@ model Course {
 }
 
 model Enrollment {
-  id         String   @id @default(cuid())
+  id         String           @id @default(cuid())
   userId     String
   courseId   String
-  enrolledAt DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
-  course     Course   @relation(fields: [courseId], references: [id])
+  orderId    String?          @unique // provenance; null for grants and legacy rows
+  source     EnrollmentSource @default(FREE)
+  enrolledAt DateTime         @default(now())
+  revokedAt  DateTime? // refunds revoke rather than delete, so history survives
+  user       User             @relation(fields: [userId], references: [id])
+  course     Course           @relation(fields: [courseId], references: [id])
 
   @@unique([userId, courseId])
 }
@@ -103,6 +109,38 @@ model VideoTranscodeJob {
   video      Video     @relation(fields: [videoId], references: [id])
 }
 
+// UI configuration (backend/SYSTEM_DESIGN.md Part IV). UiConfigVersion is append-only: it is
+// the audit log of every published UI config. Schema and seed live in backend/config/ui/.
+model UiConfigVersion {
+  id            String   @id @default(cuid())
+  version       Int      @unique
+  config        Json
+  schemaVersion Int
+  checksum      String
+  message       String
+  basedOn       Int?
+  rollbackOf    Int?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  createdBy     User?    @relation(fields: [createdById], references: [id])
+}
+
+// exactly one row, id = "ui": which version is live
+model UiConfigState {
+  id               String   @id @default("ui")
+  publishedVersion Int
+  updatedAt        DateTime @updatedAt
+}
+
+// one work-in-progress draft per admin; may be invalid until published
+model UiConfigDraft {
+  authorId    String   @id
+  baseVersion Int
+  config      Json
+  updatedAt   DateTime @updatedAt
+  author      User     @relation(fields: [authorId], references: [id])
+}
+
 enum Role {
   STUDENT
   INSTRUCTOR
@@ -113,6 +151,13 @@ enum InstructorRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum EnrollmentSource {
+  PURCHASE
+  FREE
+  ADMIN_GRANT
+  INSTRUCTOR
 }
 
 enum VideoStatus {

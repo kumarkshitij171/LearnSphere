@@ -70,11 +70,11 @@ export const loginUserSchema = Joi.object({
 // Email verification validation schema
 export const verifyUserSchema = Joi.object({
     otp: Joi.string()
-        .pattern(/^\d{4}$/)
+        .pattern(/^\d{6}$/)
         .required()
         .messages({
             'string.empty': 'OTP is required',
-            'string.pattern.base': 'OTP must be a 4-digit number',
+            'string.pattern.base': 'OTP must be a 6-digit number',
             'any.required': 'OTP is required'
         }),
     token: Joi.string()
@@ -93,6 +93,26 @@ export const refreshTokenSchema = Joi.object({
 });
 
 // Course creation validation schema
+// 0 is free. A paid price starts at 1 because Razorpay cannot charge less than ₹1, so a ₹0.50
+// course would create orders no gateway can capture.
+export const MAX_COURSE_PRICE = 500000;
+const coursePrice = Joi.number()
+    .min(0)
+    .max(MAX_COURSE_PRICE)
+    .custom((value: number, helpers) => {
+        if (value > 0 && value < 1) return helpers.error('price.belowMinimum');
+        // compare with a tolerance: 19.99 * 100 is 1998.9999999999998 in floating point
+        if (Math.abs(Math.round(value * 100) - value * 100) > 1e-6) return helpers.error('price.precision');
+        return value;
+    })
+    .messages({
+        'number.base': 'Price must be a number',
+        'number.min': 'Price cannot be negative',
+        'number.max': 'Price cannot be more than 5,00,000',
+        'price.belowMinimum': 'A paid course must cost at least 1 (use 0 for a free course)',
+        'price.precision': 'Price can have at most two decimal places',
+    });
+
 export const createCourseSchema = Joi.object({
     title: Joi.string().trim().min(3).max(150).required().messages({
         'string.empty': 'Title is required',
@@ -104,7 +124,7 @@ export const createCourseSchema = Joi.object({
         'string.min': 'Description must be at least 10 characters long',
         'any.required': 'Description is required'
     }),
-    price: Joi.number().min(0).optional(),
+    price: coursePrice.optional(),
     thumbnail: Joi.string().uri().optional().allow(null, '')
 });
 
@@ -112,7 +132,7 @@ export const createCourseSchema = Joi.object({
 export const updateCourseSchema = Joi.object({
     title: Joi.string().trim().min(3).max(150).optional(),
     description: Joi.string().trim().min(10).max(5000).optional(),
-    price: Joi.number().min(0).optional(),
+    price: coursePrice.optional(),
     thumbnail: Joi.string().uri().optional().allow(null, ''),
     isPublished: Joi.boolean().optional()
 }).min(1);
@@ -122,6 +142,43 @@ export const updateVideoSchema = Joi.object({
     title: Joi.string().trim().min(1).max(200).optional(),
     description: Joi.string().trim().max(5000).optional().allow(null, '')
 }).min(1);
+
+// Optional fields of the transcoder's /processed callback
+export const TRANSCODE_ERROR_CODES = ['CORRUPT_OR_UNSUPPORTED', 'SOURCE_MISSING', 'GAVE_UP', 'UNKNOWN'] as const;
+export type TranscodeErrorCode = (typeof TRANSCODE_ERROR_CODES)[number];
+// a type, not an interface, so it is assignable to Prisma's JSON input
+export type RenditionReport = { label: string; width: number; height: number; bandwidth: number };
+
+const transcodeReportSchemas = {
+    duration: Joi.number().integer().min(0),
+    resolutions: Joi.array().min(1).max(16).items(Joi.object({
+        label: Joi.string().pattern(/^\d+p$/).required(),
+        width: Joi.number().integer().positive().required(),
+        height: Joi.number().integer().positive().required(),
+        bandwidth: Joi.number().integer().positive().required()
+    })),
+    errorCode: Joi.string().valid(...TRANSCODE_ERROR_CODES)
+};
+
+/**
+ * The well-formed optional fields of a transcoder report. A malformed one is dropped and named in
+ * `ignored` rather than rejected: a 4xx is final for the transcoder, and must not cost a video its READY.
+ */
+export const transcodeReportExtras = (body: Record<string, unknown> = {}) => {
+    const ignored: string[] = [];
+    const pick = <T>(field: keyof typeof transcodeReportSchemas): T | undefined => {
+        if (body[field] === undefined || body[field] === null) return undefined;
+        const { error, value } = transcodeReportSchemas[field].validate(body[field], { convert: false, stripUnknown: true });
+        if (error) ignored.push(field);
+        return error ? undefined : (value as T);
+    };
+    return {
+        duration: pick<number>('duration'),
+        resolutions: pick<RenditionReport[]>('resolutions'),
+        errorCode: pick<TranscodeErrorCode>('errorCode'),
+        ignored
+    };
+};
 
 // Validation middleware
 export const validate = (schema: Joi.ObjectSchema) => {

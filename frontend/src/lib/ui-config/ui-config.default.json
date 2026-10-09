@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "branding": {
+    "appName": "LearnSphere",
+    "wordmark": {
+      "primary": "Learn",
+      "accent": "Sphere"
+    },
+    "tagline": "Learn without limits",
+    "logoUrl": null,
+    "supportEmail": "support@learnsphere.dev"
+  },
+  "theme": {
+    "primary": "83 78% 55%",
+    "accent": "83 78% 55%",
+    "background": "240 24% 5%",
+    "radius": "0.75rem"
+  },
+  "navigation": {
+    "sidebar": [
+      {
+        "id": "home",
+        "label": "Home",
+        "icon": "LayoutDashboard",
+        "href": "/dashboard",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "explore",
+        "label": "Explore",
+        "icon": "Compass",
+        "href": "/explore",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "purchases",
+        "label": "Purchases",
+        "icon": "Receipt",
+        "href": "/orders",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "studio",
+        "label": "Studio",
+        "icon": "GraduationCap",
+        "href": "/studio",
+        "roles": [
+          "INSTRUCTOR",
+          "ADMIN"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "admin",
+        "label": "Admin",
+        "icon": "ShieldCheck",
+        "href": "/admin",
+        "roles": [
+          "ADMIN"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "ui-config",
+        "label": "UI Config",
+        "icon": "SlidersHorizontal",
+        "href": "/admin/ui-config",
+        "roles": [
+          "ADMIN"
+        ],
+        "enabled": true
+      }
+    ],
+    "sidebarBottom": []
+  },
+  "home": {
+    "hero": {
+      "eyebrow": "The learning platform for modern teams",
+      "title": "Learn without limits.",
+      "titleHighlight": "Teach without friction.",
+      "subtitle": "LearnSphere unifies courses, adaptive video, analytics and certificates into one beautifully fast workspace — so you can focus on what matters: helping people grow.",
+      "ctaLabel": "Create free account",
+      "ctaHref": "/signup",
+      "footnote": "No credit card required · Free forever for individuals"
+    },
+    "sections": [
+      {
+        "type": "features",
+        "enabled": true
+      },
+      {
+        "type": "howItWorks",
+        "enabled": true
+      },
+      {
+        "type": "finalCta",
+        "enabled": true
+      }
+    ]
+  },
+  "features": {
+    "purchases": true,
+    "instructorRequests": true,
+    "studyProgress": true
+  },
+  "copy": {
+    "courseLocked": "Buy this course to watch it.",
+    "purchasesPaused": "Purchases are paused right now. Please check back soon.",
+    "emptyCatalogue": "No published courses yet. Check back soon."
+  },
+  "announcement": {
+    "enabled": false,
+    "message": "",
+    "tone": "info",
+    "href": null
+  }
+}

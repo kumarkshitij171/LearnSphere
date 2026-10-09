@@ -1,6 +1,11 @@
-// sendMail must be mocked before the controller (imported via testApp) loads it.
-jest.mock('../../utils/sendMail', () => ({
-  sendMail: jest.fn().mockResolvedValue(undefined),
+// The Redis-backed attempt counters are mocked: no Redis in tests.
+jest.mock('../../services/otpGuard.service', () => ({
+  allowOtpAttempt: jest.fn().mockResolvedValue(true),
+  allowResend: jest.fn().mockResolvedValue(true),
+}));
+// The Kafka publish must be mocked before the controller (imported via testApp) loads it.
+jest.mock('../../services/notification.service', () => ({
+  publishActivationEmail: jest.fn().mockResolvedValue(true),
 }));
 
 import request from 'supertest';
@@ -13,7 +18,8 @@ import {
   generateAccessToken,
   createActivationToken,
 } from '../../services/user.service';
-import { sendMail } from '../../utils/sendMail';
+import { publishActivationEmail } from '../../services/notification.service';
+import { allowOtpAttempt, allowResend } from '../../services/otpGuard.service';
 
 const app = buildTestApp();
 const prisma: any = new PrismaClient();
@@ -231,7 +237,7 @@ describe('GET /logout', () => {
 });
 
 describe('POST /register', () => {
-  it('creates a user, sends activation mail, and returns 201', async () => {
+  it('creates a user, queues the activation email for notification-service, and returns 201', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.user.create.mockResolvedValue(baseUser({ isVerified: false }));
 
@@ -240,8 +246,27 @@ describe('POST /register', () => {
       .send({ name: 'Jane Doe', email: 'jane@example.com', password: PASSWORD });
 
     expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(res.body).toMatchObject({ success: true, emailQueued: true });
+    expect(publishActivationEmail).toHaveBeenCalledTimes(1);
+    const [user, code, url, token] = (publishActivationEmail as jest.Mock).mock.calls[0];
+    expect(user.email).toBe(baseUser().email);
+    expect(code).toMatch(/^\d{6}$/);
+    expect(url).toContain(`otp=${code}`);
+    expect(url).toContain(`token=${token}`);
+  });
+
+  it('still creates the account when the email cannot be queued, and says so', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.create.mockResolvedValue(baseUser({ isVerified: false }));
+    (publishActivationEmail as jest.Mock).mockResolvedValueOnce(false);
+
+    const res = await request(app)
+      .post('/api/v1/users/register')
+      .send({ name: 'Jane Doe', email: 'jane@example.com', password: PASSWORD });
+
+    expect(res.status).toBe(201);
+    expect(res.body.emailQueued).toBe(false);
+    expect(res.body.message).toMatch(/resend verification/);
   });
 
   it('rejects a duplicate email with 400', async () => {
@@ -268,5 +293,63 @@ describe('POST /verify', () => {
     expect(res.body.success).toBe(true);
     expect(findCookie(res, 'access_token')).toBeDefined();
     expect(findCookie(res, 'refresh_token')).toBeDefined();
+  });
+});
+
+describe('POST /verify brute-force guard', () => {
+  it('refuses a code that has used up its attempts, even with the right digits', async () => {
+    prisma.user.findUnique.mockResolvedValue(baseUser());
+    const { token, activationCode } = await createActivationToken(baseUser() as any);
+    (allowOtpAttempt as jest.Mock).mockResolvedValueOnce(false);
+    const res = await request(app).post('/api/v1/users/verify').send({ otp: activationCode, token });
+    expect(res.status).toBe(429);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a 4-digit code outright', async () => {
+    const { token } = await createActivationToken(baseUser() as any);
+    const res = await request(app).post('/api/v1/users/verify').send({ otp: '1234', token });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /reverify-email', () => {
+  it('queues a fresh activation email for an unverified account', async () => {
+    prisma.user.findUnique.mockResolvedValue(baseUser({ isVerified: false }));
+    const res = await request(app).get('/api/v1/users/reverify-email').query({ email: 'jane@example.com' });
+    expect(res.status).toBe(200);
+    expect(publishActivationEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 503 when the email cannot be queued, so the user knows to try again', async () => {
+    prisma.user.findUnique.mockResolvedValue(baseUser({ isVerified: false }));
+    (publishActivationEmail as jest.Mock).mockResolvedValueOnce(false);
+    const res = await request(app).get('/api/v1/users/reverify-email').query({ email: 'jane@example.com' });
+    expect(res.status).toBe(503);
+  });
+
+  it('gives the same answer for an unknown email, without sending anything', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(baseUser({ isVerified: false }));
+    const real = await request(app).get('/api/v1/users/reverify-email').query({ email: 'jane@example.com' });
+    (publishActivationEmail as jest.Mock).mockClear();
+    prisma.user.findUnique.mockResolvedValueOnce(null);
+    const unknown = await request(app).get('/api/v1/users/reverify-email').query({ email: 'nobody@example.com' });
+    expect(unknown.status).toBe(real.status);
+    expect(unknown.body.message).toBe(real.body.message);
+    expect(publishActivationEmail).not.toHaveBeenCalled();
+  });
+
+  it('gives the same answer for an already verified account, without sending anything', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(baseUser({ isVerified: true }));
+    const res = await request(app).get('/api/v1/users/reverify-email').query({ email: 'jane@example.com' });
+    expect(res.status).toBe(200);
+    expect(publishActivationEmail).not.toHaveBeenCalled();
+  });
+
+  it('stops one address being flooded with codes', async () => {
+    (allowResend as jest.Mock).mockResolvedValueOnce(false);
+    const res = await request(app).get('/api/v1/users/reverify-email').query({ email: 'jane@example.com' });
+    expect(res.status).toBe(429);
+    expect(publishActivationEmail).not.toHaveBeenCalled();
   });
 });

@@ -22,13 +22,13 @@ function VerifyContent() {
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
+  const [resent, setResent] = useState<string | null>(null);
   const attempted = useRef(false);
 
   const verify = async (code: string) => {
     setError(null);
-    if (!/^\d{4}$/.test(code)) {
-      setError('Enter the 4-digit code from your email.');
+    if (!/^\d{6}$/.test(code)) {
+      setError('Enter the 6-digit code from your email.');
       return;
     }
     setVerifying(true);
@@ -55,8 +55,8 @@ function VerifyContent() {
     setError(null);
     setResending(true);
     try {
-      await usersApi.reverifyEmail(email);
-      setResent(true);
+      const { data } = await usersApi.reverifyEmail(email);
+      setResent(data?.message ?? 'A fresh code is on its way to your inbox.');
     } catch (err) {
       console.error('Resend error:', err);
       setError(
@@ -67,9 +67,9 @@ function VerifyContent() {
     }
   };
 
-  // Auto-verify when the email link already carries a full 4-digit code.
+  // Auto-verify when the email link already carries a full 6-digit code.
   useEffect(() => {
-    if (!attempted.current && otpFromUrl.length === 4) {
+    if (!attempted.current && otpFromUrl.length === 6) {
       attempted.current = true;
       verify(otpFromUrl);
     }
@@ -87,7 +87,7 @@ function VerifyContent() {
           Verify your account
         </h1>
         <p className="text-muted-foreground">
-          Enter the 4-digit activation code we emailed you to finish setting up
+          Enter the 6-digit activation code we emailed you to finish setting up
           your account.
         </p>
       </div>
@@ -96,7 +96,7 @@ function VerifyContent() {
         <OtpInput
           value={otp}
           onChange={setOtp}
-          length={4}
+          length={6}
           hasError={!!error}
           disabled={verifying}
           onComplete={(code) => verify(code)}
@@ -125,9 +125,7 @@ function VerifyContent() {
         </Button>
 
         {resent && (
-          <p className="text-center text-sm text-emerald-400">
-            A fresh code is on its way to your inbox.
-          </p>
+          <p className="text-center text-sm text-emerald-400">{resent}</p>
         )}
 
         <p className="text-center text-sm text-muted-foreground">

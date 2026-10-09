@@ -4,6 +4,7 @@ const mockConnect = jest.fn().mockResolvedValue(undefined);
 jest.mock('kafkajs', () => ({
   Kafka: jest.fn(() => ({
     producer: () => ({ connect: mockConnect, send: mockSend, disconnect: jest.fn() }),
+    admin: () => ({ connect: jest.fn(), createTopics: jest.fn().mockResolvedValue(true), disconnect: jest.fn() }),
   })),
 }));
 
@@ -37,6 +38,12 @@ describe('publishVideoUploaded', () => {
       resolutions: event.resolutions,
     });
     expect(payload.timestamp).toBeDefined();
+  });
+
+  it('omits resolutions when the event carries none', async () => {
+    const { resolutions, ...uncapped } = event;
+    await publishVideoUploaded(uncapped);
+    expect(JSON.parse(mockSend.mock.calls[0][0].messages[0].value)).not.toHaveProperty('resolutions');
   });
 
   it('propagates a send failure', async () => {

@@ -33,7 +33,13 @@ export const config = {
     clientId: process.env.KAFKA_CLIENT_ID || 'video-transcode-service',
     topicVideoTranscode: process.env.KAFKA_TOPIC_VIDEO_TRANSCODE || 'video.uploaded',
   },
-  database: {
-    url: process.env.DATABASE_URL || '',
+  backend: {
+    apiUrl: (process.env.BACKEND_API_URL || '').replace(/\/$/, ''),
+    apiKey: process.env.TRANCODER_API_KEY || '',
+  },
+  transcode: {
+    // the tallest rung produced; a taller source tops out here
+    maxRung: Number(process.env.TRANSCODE_MAX_RUNG) || 2160,
+    preset: process.env.TRANSCODE_PRESET?.trim() || 'veryfast',
   },
 };

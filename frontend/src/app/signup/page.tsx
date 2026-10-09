@@ -120,7 +120,7 @@ export default function SignupPage() {
 
     setIsLoading(true);
     try {
-      // Register sets an httpOnly activation `token` cookie and emails a 4-digit OTP.
+      // Register sets an httpOnly activation `token` cookie and emails a 6-digit OTP.
       await usersApi.register({
         name: formData.name.trim(),
         email: formData.email,
@@ -145,8 +145,8 @@ export default function SignupPage() {
   const handleVerify = async (code?: string) => {
     const value = code ?? otp;
     setOtpError(null);
-    if (!/^\d{4}$/.test(value)) {
-      setOtpError('Enter the 4-digit code from your email.');
+    if (!/^\d{6}$/.test(value)) {
+      setOtpError('Enter the 6-digit code from your email.');
       return;
     }
 
@@ -169,14 +169,10 @@ export default function SignupPage() {
     setResendState('sending');
     setResendNote(null);
     try {
-      // Re-registering regenerates and re-emails the activation code.
-      await usersApi.register({
-        name: formData.name.trim(),
-        email: formData.email,
-        password: formData.password,
-      });
+      // re-registering an existing account fails with "User already exists"; resending is its own endpoint
+      const { data } = await usersApi.reverifyEmail(formData.email);
       setResendState('sent');
-      setResendNote('A new code has been sent to your email.');
+      setResendNote(data?.message ?? 'A new code has been sent to your email.');
     } catch (error) {
       setResendState('idle');
       setResendNote(
@@ -217,7 +213,7 @@ export default function SignupPage() {
             Verify your email
           </h1>
           <p className="text-muted-foreground">
-            We sent a 4-digit code to{' '}
+            We sent a 6-digit code to{' '}
             <span className="font-medium text-foreground">{formData.email}</span>.
             Enter it below to activate your account.
           </p>
@@ -227,7 +223,7 @@ export default function SignupPage() {
           <OtpInput
             value={otp}
             onChange={setOtp}
-            length={4}
+            length={6}
             hasError={!!otpError}
             disabled={verifying}
             onComplete={(code) => handleVerify(code)}

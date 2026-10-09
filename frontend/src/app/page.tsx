@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/brand';
+import { loadUiConfig } from '@/lib/ui-config/server';
+import type { HomeSectionType } from '@/lib/ui-config';
 
 const features = [
   {
@@ -80,7 +83,153 @@ const heroChips = [
   { icon: Award, value: '120K', label: 'certificates issued' },
 ];
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const { config } = await loadUiConfig();
+  const { home } = config;
+  const { hero } = home;
+
+  // Sections below the hero, in the order and with the toggles the UI config sets.
+  const blocks: Record<HomeSectionType, JSX.Element> = {
+    features: (
+    <>
+      {/* Stats band */}
+      <section id="stats" className="border-y border-white/10 bg-white/[0.02]">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-10 px-5 py-14 md:grid-cols-4">
+          {stats.map((s) => (
+            <div key={s.label} className="text-center">
+              <div className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+                {s.value}
+              </div>
+              <div className="mt-2 text-sm text-muted-foreground">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="mx-auto max-w-7xl px-5 py-28">
+        <div className="mx-auto max-w-2xl text-center">
+          <span className="font-mono text-xs uppercase tracking-widest text-primary">
+            Features
+          </span>
+          <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            Everything you need to{' '}
+            <span className="text-gradient">learn and teach</span>
+          </h2>
+          <p className="mt-4 text-lg text-muted-foreground">
+            A complete toolkit built for creators, educators and ambitious learners.
+          </p>
+        </div>
+
+        <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="group rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-[0_12px_40px_-12px_hsl(83_78%_55%/0.25)]"
+            >
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 transition-colors group-hover:bg-primary/15">
+                <f.icon className="h-6 w-6" />
+              </div>
+              <h3 className="mt-5 font-display text-lg font-semibold tracking-tight">
+                {f.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  ),
+    howItWorks: (
+    <>
+      {/* How it works */}
+      <section id="how" className="relative overflow-hidden border-y border-white/10">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-spotlight opacity-60" />
+        <div className="mx-auto max-w-7xl px-5 py-28">
+          <div className="mx-auto max-w-2xl text-center">
+            <span className="font-mono text-xs uppercase tracking-widest text-primary">
+              How it works
+            </span>
+            <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
+              Live in three steps
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              From empty workspace to thriving academy — without the busywork.
+            </p>
+          </div>
+
+          <div className="mt-16 grid gap-5 md:grid-cols-3">
+            {steps.map((s) => (
+              <div
+                key={s.n}
+                className="glass relative rounded-2xl p-7 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30"
+              >
+                <span className="font-mono text-sm font-semibold text-primary">
+                  {s.n}
+                </span>
+                <h3 className="mt-4 font-display text-xl font-semibold tracking-tight">
+                  {s.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {s.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Testimonial */}
+          <figure className="glass mx-auto mt-12 max-w-3xl rounded-2xl p-8 text-center">
+            <div className="flex justify-center gap-1 text-primary">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star key={i} className="h-4 w-4 fill-current" />
+              ))}
+            </div>
+            <blockquote className="mt-5 font-display text-xl font-medium leading-relaxed tracking-tight text-foreground sm:text-2xl">
+              “We moved our entire onboarding to LearnSphere and completion rates
+              jumped from 61% to 94% in a single quarter.”
+            </blockquote>
+            <figcaption className="mt-5 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Maya Chen</span> · Head of
+              People Development, Northwind
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+    </>
+  ),
+    finalCta: (
+    <>
+      {/* CTA band */}
+      <section className="mx-auto max-w-7xl px-5 py-28">
+        <div className="glass glow-primary relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-16 sm:py-20">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-lime-300/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl" />
+          <h2 className="relative mx-auto max-w-2xl font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            Ready to start your{' '}
+            <span className="text-gradient">learning journey?</span>
+          </h2>
+          <p className="relative mx-auto mt-5 max-w-xl text-lg text-muted-foreground">
+            Join thousands of learners and creators already growing with LearnSphere.
+          </p>
+          <div className="relative mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Button size="lg" asChild className="gap-2 text-base">
+              <Link href="/signup">
+                Get started for free
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Check className="h-4 w-4 text-primary" /> Set up in under 2 minutes
+            </span>
+          </div>
+        </div>
+      </section>
+    </>
+  ),
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
@@ -128,24 +277,22 @@ export default function LandingPage() {
         <div className="mx-auto max-w-4xl px-5 pb-24 pt-20 text-center sm:pt-28">
           <span className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground backdrop-blur">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            The learning platform for modern teams
+            {hero.eyebrow}
           </span>
 
           <h1 className="animate-fade-up animation-delay-200 mx-auto mt-7 max-w-3xl font-display text-5xl font-bold leading-[1.05] tracking-tight sm:text-7xl">
-            Learn without limits.{' '}
-            <span className="text-gradient">Teach without friction.</span>
+            {hero.title}{' '}
+            <span className="text-gradient">{hero.titleHighlight}</span>
           </h1>
 
           <p className="animate-fade-up animation-delay-200 mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-            LearnSphere unifies courses, adaptive video, analytics and certificates
-            into one beautifully fast workspace — so you can focus on what matters:
-            helping people grow.
+            {hero.subtitle}
           </p>
 
           <div className="animate-fade-up animation-delay-400 mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button size="lg" asChild className="gap-2 text-base">
-              <Link href="/signup">
-                Create free account
+              <Link href={hero.ctaHref}>
+                {hero.ctaLabel}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -156,7 +303,7 @@ export default function LandingPage() {
 
           <p className="animate-fade-up animation-delay-400 mt-5 flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            No credit card required · Free forever for individuals
+            {hero.footnote}
           </p>
         </div>
 
@@ -215,134 +362,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Stats band */}
-      <section id="stats" className="border-y border-white/10 bg-white/[0.02]">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-10 px-5 py-14 md:grid-cols-4">
-          {stats.map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
-                {s.value}
-              </div>
-              <div className="mt-2 text-sm text-muted-foreground">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {home.sections
+        .filter((section) => section.enabled && blocks[section.type])
+        .map((section) => (
+          <Fragment key={section.type}>{blocks[section.type]}</Fragment>
+        ))}
 
-      {/* Features */}
-      <section id="features" className="mx-auto max-w-7xl px-5 py-28">
-        <div className="mx-auto max-w-2xl text-center">
-          <span className="font-mono text-xs uppercase tracking-widest text-primary">
-            Features
-          </span>
-          <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-            Everything you need to{' '}
-            <span className="text-gradient">learn and teach</span>
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            A complete toolkit built for creators, educators and ambitious learners.
-          </p>
-        </div>
-
-        <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f) => (
-            <div
-              key={f.title}
-              className="group rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-[0_12px_40px_-12px_hsl(83_78%_55%/0.25)]"
-            >
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 transition-colors group-hover:bg-primary/15">
-                <f.icon className="h-6 w-6" />
-              </div>
-              <h3 className="mt-5 font-display text-lg font-semibold tracking-tight">
-                {f.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {f.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how" className="relative overflow-hidden border-y border-white/10">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-spotlight opacity-60" />
-        <div className="mx-auto max-w-7xl px-5 py-28">
-          <div className="mx-auto max-w-2xl text-center">
-            <span className="font-mono text-xs uppercase tracking-widest text-primary">
-              How it works
-            </span>
-            <h2 className="mt-4 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-              Live in three steps
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              From empty workspace to thriving academy — without the busywork.
-            </p>
-          </div>
-
-          <div className="mt-16 grid gap-5 md:grid-cols-3">
-            {steps.map((s) => (
-              <div
-                key={s.n}
-                className="glass relative rounded-2xl p-7 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30"
-              >
-                <span className="font-mono text-sm font-semibold text-primary">
-                  {s.n}
-                </span>
-                <h3 className="mt-4 font-display text-xl font-semibold tracking-tight">
-                  {s.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {s.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Testimonial */}
-          <figure className="glass mx-auto mt-12 max-w-3xl rounded-2xl p-8 text-center">
-            <div className="flex justify-center gap-1 text-primary">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className="h-4 w-4 fill-current" />
-              ))}
-            </div>
-            <blockquote className="mt-5 font-display text-xl font-medium leading-relaxed tracking-tight text-foreground sm:text-2xl">
-              “We moved our entire onboarding to LearnSphere and completion rates
-              jumped from 61% to 94% in a single quarter.”
-            </blockquote>
-            <figcaption className="mt-5 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Maya Chen</span> · Head of
-              People Development, Northwind
-            </figcaption>
-          </figure>
-        </div>
-      </section>
-
-      {/* CTA band */}
-      <section className="mx-auto max-w-7xl px-5 py-28">
-        <div className="glass glow-primary relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-16 sm:py-20">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-lime-300/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-emerald-400/10 blur-3xl" />
-          <h2 className="relative mx-auto max-w-2xl font-display text-4xl font-bold tracking-tight sm:text-5xl">
-            Ready to start your{' '}
-            <span className="text-gradient">learning journey?</span>
-          </h2>
-          <p className="relative mx-auto mt-5 max-w-xl text-lg text-muted-foreground">
-            Join thousands of learners and creators already growing with LearnSphere.
-          </p>
-          <div className="relative mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button size="lg" asChild className="gap-2 text-base">
-              <Link href="/signup">
-                Get started for free
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Check className="h-4 w-4 text-primary" /> Set up in under 2 minutes
-            </span>
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="border-t border-white/10">
@@ -362,7 +387,7 @@ export default function LandingPage() {
               Get started
             </Link>
           </div>
-          <p className="text-sm text-muted-foreground">© 2026 LearnSphere</p>
+          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} {config.branding.appName}</p>
         </div>
       </footer>
     </div>

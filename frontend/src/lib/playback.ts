@@ -11,3 +11,9 @@ export function masterPlaylistUrl(video: CourseVideo): string {
   if (path) return `${base}/api/video-transcoder/hls/${path.replace(/^\//, '')}`;
   return `${base}/api/video-transcoder/hls/master.m3u8`;
 }
+
+/** The transcoder writes one frame per video next to its HLS output ({videoId}/poster.jpg). */
+export function posterUrl(video: Pick<CourseVideo, 'id' | 'status'>): string | null {
+  if (video.status !== 'READY') return null;
+  return `${env.transcoderUrl.replace(/\/$/, '')}/api/video-transcoder/hls/${video.id}/poster.jpg`;
+}

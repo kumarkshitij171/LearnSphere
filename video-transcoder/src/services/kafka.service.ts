@@ -67,7 +67,7 @@ export interface VideoTranscodeMessage {
   bucket: string;
   key: string;
   inputS3Path?: string;
-  resolutions: string[];
+  resolutions?: string[];
   size?: number;
   timestamp?: string;
 }
@@ -75,9 +75,21 @@ export interface VideoTranscodeMessage {
 /**
  * Start Kafka consumer to listen for video transcode messages
  */
-export const startKafkaConsumer = async (
-  messageHandler: (message: VideoTranscodeMessage) => Promise<void>
-): Promise<void> => {
+let consumerReady = false;
+/** True while this instance is a member of the consumer group; reported by /ready. */
+export const isConsumerReady = (): boolean => consumerReady;
+kafkaConsumer.on(kafkaConsumer.events.GROUP_JOIN, () => {
+  consumerReady = true;
+});
+for (const event of [kafkaConsumer.events.CRASH, kafkaConsumer.events.DISCONNECT, kafkaConsumer.events.STOP]) {
+  kafkaConsumer.on(event, () => {
+    consumerReady = false;
+  });
+}
+
+export type MessageHandler = (message: VideoTranscodeMessage, heartbeat: () => Promise<void>) => Promise<void>;
+
+export const startKafkaConsumer = async (messageHandler: MessageHandler): Promise<void> => {
   const brokers = config.kafka.brokers?.split(',') || ['localhost:9092'];
   const topic = config.kafka.topicVideoTranscode || 'video.uploaded';
   
@@ -107,27 +119,20 @@ export const startKafkaConsumer = async (
     logger.info(`Subscribed to topic: ${topic}`);
 
     await kafkaConsumer.run({
-      eachMessage: async ({ topic, partition, message }) => {
+      eachMessage: async ({ topic, partition, message, heartbeat }) => {
+        const messageValue = message.value?.toString();
+        let data: VideoTranscodeMessage;
         try {
-          const messageValue = message.value?.toString();
-          if (!messageValue) {
-            logger.warn('Received empty message');
-            return;
-          }
-
-          const data: VideoTranscodeMessage = JSON.parse(messageValue);
-          logger.info(`Received message from ${topic}[${partition}]`, {
-            key: data.key,
-            bucket: data.bucket,
-            videoId: data.videoId,
-          });
-
-          // Process the message
-          await messageHandler(data);
+          if (!messageValue) throw new Error('empty message');
+          data = JSON.parse(messageValue);
         } catch (error) {
-          logger.error('Error processing Kafka message', { error });
-          // Message will be retried automatically by Kafka
+          // unreadable now means unreadable forever; redelivering it would only stall the partition
+          logger.error(`Dropping unreadable message at ${topic}[${partition}]@${message.offset}`, { error });
+          return;
         }
+        logger.info(`Received message from ${topic}[${partition}]`, { videoId: data.videoId, key: data.key });
+        // a throw here is deliberate: kafkajs retries and does not commit, so the outcome is never lost
+        await messageHandler(data, heartbeat);
       },
     });
 

@@ -5,36 +5,43 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "dev": "tsx watch src/index.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.490.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "winston": "^3.19.0",
     "express": "^5.2.1",
-    "kafkajs": "^2.2.4",
-    "@aws-sdk/client-s3": "^3.490.0",
     "fluent-ffmpeg": "^2.1.2",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@prisma/client": "^5.22.0"
+    "kafkajs": "^2.2.4",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
-    "@types/node": "^25.1.0",
     "@types/fluent-ffmpeg": "^2.1.24",
-    "prisma": "^5.22.0",
+    "@types/node": "^25.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "@ffmpeg-installer/darwin-arm64": true,
+    "@ffmpeg-installer/darwin-x64": true,
+    "@ffmpeg-installer/linux-x64": true,
+    "@ffmpeg-installer/linux-arm64": true,
+    "@ffprobe-installer/darwin-arm64": true,
+    "@ffprobe-installer/darwin-x64": true,
+    "@ffprobe-installer/linux-x64": true,
+    "@ffprobe-installer/linux-arm64": true,
+    "esbuild": true,
+    "fsevents": true
   }
 }

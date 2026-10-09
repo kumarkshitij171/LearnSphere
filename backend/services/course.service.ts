@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma, EnrollmentSource } from '@prisma/client';
 import { deleteVideoS3Artifacts } from './s3.service';
 
 const prisma = new PrismaClient();
@@ -23,18 +23,34 @@ export const createCourse = (instructorId: string, input: CreateCourseInput) =>
     },
   });
 
+// What a student counts as "lessons" is what they can watch: processing and failed videos are not.
+const readyLessonCount = { videos: { where: { status: 'READY' as const } } };
+
+// A published course with nothing ready to watch (every lesson deleted or failed) stays out of the
+// catalogue rather than being sold empty.
 export const listPublishedCourses = () =>
   prisma.course.findMany({
-    where: { isPublished: true },
+    where: { isPublished: true, videos: { some: { status: 'READY' } } },
     orderBy: { createdAt: 'desc' },
-    include: { instructor: { select: instructorSelect }, _count: { select: { videos: true } } },
+    include: { instructor: { select: instructorSelect }, _count: { select: readyLessonCount } },
+  });
+
+/** Every course, drafts included, for the admin console — with who made it and how it is doing. */
+export const listAllCourses = () =>
+  prisma.course.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: {
+      instructor: { select: instructorSelect },
+      _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
+    },
   });
 
 export const listMyCourses = (instructorId: string) =>
   prisma.course.findMany({
     where: { instructorId },
     orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { videos: true, enrollments: true } } },
+    // the instructor sees every lesson they made; students counted are the ones with access today
+    include: { _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } } },
   });
 
 export const getCourseById = (courseId: string, opts: { withVideos?: boolean } = {}) =>
@@ -46,6 +62,31 @@ export const getCourseById = (courseId: string, opts: { withVideos?: boolean } =
         ? { orderBy: { createdAt: 'asc' } }
         : false,
     },
+  });
+
+export const countReadyVideos = (courseId: string) =>
+  prisma.video.count({ where: { courseId, status: 'READY' } });
+
+// Lean projection for order-service: only the fields an order snapshots.
+export const getCourseForCatalogue = (courseId: string) =>
+  prisma.course.findUnique({
+    where: { id: courseId },
+    select: {
+      id: true,
+      title: true,
+      price: true,
+      currency: true,
+      isPublished: true,
+      instructorId: true,
+    },
+  });
+
+// Entitlement lookup for order-service. A revoked row is kept for history but
+// must read as "not enrolled", so a refunded buyer can purchase again.
+export const getEnrollment = (userId: string, courseId: string) =>
+  prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId } },
+    select: { id: true, orderId: true, source: true, enrolledAt: true, revokedAt: true },
   });
 
 export const updateCourse = (courseId: string, data: Prisma.CourseUpdateInput) =>
@@ -72,22 +113,64 @@ export const deleteCourse = async (courseId: string) => {
   await Promise.allSettled(videos.map((v) => deleteVideoS3Artifacts(v.originalKey, v.id)));
 };
 
-export const enrollInCourse = async (userId: string, courseId: string) => {
+export interface EnrollOptions {
+  source?: EnrollmentSource;
+  orderId?: string;
+}
+
+// Idempotent: upsert on (userId, courseId). Re-granting clears a revocation, so a buyer refunded
+// earlier who purchases again gets access back.
+export const enrollInCourse = async (userId: string, courseId: string, opts: EnrollOptions = {}) => {
   const course = await prisma.course.findUnique({ where: { id: courseId } });
   if (!course) return { ok: false as const, reason: 'NOT_FOUND' as const };
 
-  // Idempotent: upsert on the (userId, courseId) unique constraint.
+  const provenance = {
+    ...(opts.source ? { source: opts.source } : {}),
+    ...(opts.orderId ? { orderId: opts.orderId } : {}),
+  };
   const enrollment = await prisma.enrollment.upsert({
     where: { userId_courseId: { userId, courseId } },
-    update: {},
-    create: { userId, courseId },
+    update: { revokedAt: null, ...provenance },
+    create: { userId, courseId, ...provenance },
   });
   return { ok: true as const, enrollment };
 };
 
+// Grant from a paid order. A redelivered order.paid for an order that was since refunded must
+// not resurrect access, so a revocation made against the same order wins.
+export const grantFromOrder = async (userId: string, courseId: string, orderId: string) => {
+  const existing = await getEnrollment(userId, courseId);
+  if (existing?.revokedAt && existing.orderId === orderId) {
+    return { ok: false as const, reason: 'REVOKED_FOR_THIS_ORDER' as const };
+  }
+  if (existing && !existing.revokedAt) return { ok: true as const, enrollment: existing };
+  return enrollInCourse(userId, courseId, { source: 'PURCHASE', orderId });
+};
+
+// Revoke only what this order granted: an admin grant or a later purchase is left alone.
+export const revokeFromOrder = async (userId: string, courseId: string, orderId: string) => {
+  const existing = await getEnrollment(userId, courseId);
+  if (!existing || existing.orderId !== orderId || existing.revokedAt) {
+    return { ok: false as const, reason: 'NOT_GRANTED_BY_ORDER' as const };
+  }
+  const enrollment = await prisma.enrollment.update({
+    where: { userId_courseId: { userId, courseId } },
+    data: { revokedAt: new Date() },
+  });
+  return { ok: true as const, enrollment };
+};
+
+// A revoked row is history, not access.
 export const isEnrolled = async (userId: string, courseId: string) => {
   const found = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId, courseId } },
   });
-  return !!found;
+  return !!found && !found.revokedAt;
 };
+
+export const listEnrolledCourses = (userId: string) =>
+  prisma.course.findMany({
+    where: { enrollments: { some: { userId, revokedAt: null } } },
+    orderBy: { createdAt: 'desc' },
+    include: { instructor: { select: instructorSelect }, _count: { select: readyLessonCount } },
+  });

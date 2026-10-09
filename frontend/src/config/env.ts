@@ -45,13 +45,42 @@ function readEnv(
   throw new Error(`[config] Missing required environment variable "${key}".`);
 }
 
+/** For features that are simply off when unconfigured (push), rather than broken. */
+function readOptional(rawValue: string | undefined): string | null {
+  const value = rawValue?.trim();
+  return value ? value : null;
+}
+
 export const env = Object.freeze({
-  /** Base URL of the LMS backend API (e.g. https://api.lms.com). */
+  /** Base URL of the LMS backend API */
   apiBaseUrl: readEnv(
     'NEXT_PUBLIC_API_BASE_URL',
     process.env.NEXT_PUBLIC_API_BASE_URL,
     { fallback: 'http://localhost:5001' }
   ),
+
+  /** Base URL of order-service (orders, payments, refunds). */
+  orderApiBaseUrl: readEnv(
+    'NEXT_PUBLIC_ORDER_API_URL',
+    process.env.NEXT_PUBLIC_ORDER_API_URL,
+    { fallback: 'http://localhost:8086' }
+  ),
+
+  /** Base URL of notification-service (device registration for push). */
+  notificationApiBaseUrl: readEnv(
+    'NEXT_PUBLIC_NOTIFICATION_API_URL',
+    process.env.NEXT_PUBLIC_NOTIFICATION_API_URL,
+    { fallback: 'http://localhost:8085' }
+  ),
+
+  /** Firebase web config for push. All optional: without them push is not offered. */
+  firebase: Object.freeze({
+    apiKey: readOptional(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
+    projectId: readOptional(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+    messagingSenderId: readOptional(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+    appId: readOptional(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
+    vapidKey: readOptional(process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY),
+  }),
 
   /** Base URL of the video transcoder service. */
   transcoderUrl: readEnv(

@@ -5,7 +5,8 @@ import {
   approveInstructorRequest,
   rejectInstructorRequest,
 } from '../controllers/instructorRequest.controller';
-import { getUsers, changeUserRole } from '../controllers/admin.controller';
+import { getUsers, changeUserRole, getAllCourses } from '../controllers/admin.controller';
+import { uiConfigAdminRoutes } from './uiConfig.routes';
 
 const router = express.Router();
 
@@ -18,5 +19,9 @@ router.post('/instructor-requests/:id/reject', rejectInstructorRequest);
 
 router.get('/users', getUsers);
 router.patch('/users/:id/role', changeUserRole);
+
+router.get('/courses', getAllCourses);
+
+router.use('/ui-config', uiConfigAdminRoutes);
 
 export default router;

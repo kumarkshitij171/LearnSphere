@@ -1,0 +1,46 @@
+// Buy a course - order, payment, enrolment, receipt (sequence-diagram)
+// Contract source: order-service/SYSTEM_DESIGN.md
+
+title Purchase - Order to Enrolment to Receipt
+
+autoNumber on
+
+Student [icon: user]
+Frontend [icon: nextjs]
+OrderSvc [icon: java, label: "order-service"]
+Catalogue [icon: nodejs, label: "course-service"]
+Gateway [icon: credit-card, label: "Razorpay / Stripe"]
+Kafka [icon: kafka]
+Notify [icon: java, label: "notification-service"]
+
+Student > Frontend: click Buy
+Frontend > OrderSvc: POST /orders courseId provider idempotencyKey
+OrderSvc > Catalogue: GET /internal/courses/:id
+Catalogue --> OrderSvc: title price currency amountMinor isPublished
+OrderSvc > Catalogue: GET /internal/enrollments/:userId/:courseId
+Catalogue --> OrderSvc: already enrolled?
+OrderSvc > OrderSvc: insert order CREATED and flush - unique indexes arbitrate
+OrderSvc > Gateway: create checkout session
+Gateway --> OrderSvc: providerOrderId + public key
+OrderSvc > OrderSvc: payment INITIATED, order PENDING
+OrderSvc --> Frontend: 201 orderId + checkout bag
+Frontend > Gateway: open checkout, student pays
+Gateway > Frontend: redirect - tells UI to start polling only
+Gateway > OrderSvc: POST /webhooks/{provider} signed raw body
+OrderSvc > OrderSvc: verify signature first - nothing written if invalid
+OrderSvc > OrderSvc: ONE tx - dedup row, lock order FOR UPDATE, guard transition, order PAID, outbox rows
+OrderSvc --> Gateway: 200
+OrderSvc > Kafka: order.paid via outbox relay
+OrderSvc > Kafka: notifications - NotificationMessage receipt
+Kafka > Catalogue: consume order.paid
+Catalogue > Catalogue: upsert Enrollment source PURCHASE orderId
+Kafka > Notify: consume notifications
+Notify > Student: receipt email
+opt [label: webhook lost] {
+  OrderSvc > Gateway: sweeper - fetch payment by provider order id
+  Gateway --> OrderSvc: captured
+  OrderSvc > OrderSvc: same guarded transition as the webhook, actor SWEEPER
+}
+Frontend > OrderSvc: GET /orders/{orderId} poll
+OrderSvc --> Frontend: status PAID
+Frontend > Catalogue: re-fetch course, now enrolled

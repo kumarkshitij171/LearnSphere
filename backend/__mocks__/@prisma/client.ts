@@ -11,5 +11,6 @@ export const Prisma = {};
 export const Role = { STUDENT: 'STUDENT', INSTRUCTOR: 'INSTRUCTOR', ADMIN: 'ADMIN' };
 export const InstructorRequestStatus = { PENDING: 'PENDING', APPROVED: 'APPROVED', REJECTED: 'REJECTED' };
 export const VideoStatus = { UPLOADED: 'UPLOADED', TRANSCODING: 'TRANSCODING', READY: 'READY', FAILED: 'FAILED' };
+export const EnrollmentSource = { PURCHASE: 'PURCHASE', FREE: 'FREE', ADMIN_GRANT: 'ADMIN_GRANT', INSTRUCTOR: 'INSTRUCTOR' };
 
-export default { PrismaClient, Prisma, Role, InstructorRequestStatus, VideoStatus };
+export default { PrismaClient, Prisma, Role, InstructorRequestStatus, VideoStatus, EnrollmentSource };

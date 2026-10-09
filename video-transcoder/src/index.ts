@@ -2,21 +2,44 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { config } from "./config/conf.js";
+import { ffmpegPath, ffprobePath } from "./config/ffmpeg.js";
+import { configProblems } from "./config/validate.js";
 import { logger } from "./utils/logger.js";
 import {
   startKafkaConsumer,
   disconnectKafkaConsumer,
-  type VideoTranscodeMessage,
+  isConsumerReady,
+  type MessageHandler,
 } from "./services/kafka.service.js";
+import { processTranscodeMessage } from "./services/job.service.js";
+import { sweepStaleJobDirs } from "./services/temp.service.js";
 import { transcodeVideo } from "./services/transcode.service.js";
 import { getS3ObjectStream } from "./services/s3.service.js";
 import { markVideoProcessed } from "./services/backend-api.service.js";
 
+// fail at boot, not on the first upload: a missing key used to skip the callback silently
+const problems = configProblems(process.env, { FFmpeg: ffmpegPath, FFprobe: ffprobePath });
+if (problems.length) {
+  for (const p of problems) logger.error(`Config: ${p}`);
+  process.exit(1);
+}
+
 const app = express();
+app.disable("x-powered-by");
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
 const PORT: number = Number(config.port) || 7000;
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "healthy" });
+});
+
+// readiness: only an instance that is in the consumer group is doing its job
+app.get("/ready", (_req, res) => {
+  const ready = isConsumerReady();
+  res.status(ready ? 200 : 503).json({ ready });
 });
 
 app.use(express.json());
@@ -70,83 +93,36 @@ app.use("/api/video-transcoder/hls", async (req, res) => {
   }
 });
 
-/**
- * Handle video transcode messages from Kafka (topic: video.uploaded).
- * Backend sends: videoId, userId, bucket, key, resolutions.
- */
-const handleTranscodeMessage = async (
-  message: VideoTranscodeMessage
-): Promise<void> => {
-  const { bucket, key, videoId, resolutions = ['240p', '480p', '720p', '1080p'] } = message;
+const handleTranscodeMessage: MessageHandler = (message, heartbeat) =>
+  processTranscodeMessage(message, {
+    transcode: transcodeVideo,
+    report: markVideoProcessed,
+    heartbeat,
+  });
 
-  if (!videoId) {
-    logger.error("Message missing videoId");
-    return;
-  }
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+let stopping = false;
 
-  try {
-    logger.info(`Processing video transcode job: videoId=${videoId} bucket=${bucket} key=${key}`);
-
-    // Notify backend: status = TRANSCODING
-    await markVideoProcessed(videoId, { status: 'TRANSCODING' });
-
-    const result = await transcodeVideo({
-      bucket,
-      key,
-      videoId,
-      resolutions,
-    });
-
-    if (result.success && result.hlsMasterPath) {
-      await markVideoProcessed(videoId, {
-        status: 'READY',
-        hlsMasterPath: result.hlsMasterPath,
-      });
-      logger.info(`Successfully completed transcoding for: ${videoId}`);
-    } else {
-      await markVideoProcessed(videoId, {
-        status: "FAILED",
-        error: result.error || "Transcoding failed",
-      });
-      logger.error(`Failed to transcode video: ${videoId}`, { error: result.error });
-    }
-  } catch (error: any) {
-    logger.error("Error handling transcode message", { error: error?.message, videoId });
-    try {
-      await markVideoProcessed(videoId, {
-        status: "FAILED",
-        error: error?.message || "Unknown error",
-      });
-    } catch (apiError) {
-      logger.error("Failed to notify backend", { apiError });
-    }
-  }
-};
-
-/**
- * Start the transcoding service
- */
+// Keep trying: a broker that is not up yet at boot must not leave the service running idle forever.
+// HLS keeps being served meanwhile.
 const startService = async (): Promise<void> => {
-  try {
-    logger.info("Starting Video Transcoding Service...", {
-      kafkaBrokers: config.kafka.brokers,
-      kafkaTopic: config.kafka.topicVideoTranscode,
-      s3RawBucket: config.s3?.rawVideoBucket,
-      s3ProcessedBucket: config.s3?.processedVideoBucket,
-    });
-
+  sweepStaleJobDirs();
+  setInterval(() => sweepStaleJobDirs(), 60 * 60 * 1000).unref();
+  logger.info("Starting Video Transcoding Service...", {
+    kafkaBrokers: config.kafka.brokers,
+    kafkaTopic: config.kafka.topicVideoTranscode,
+    s3RawBucket: config.s3?.rawVideoBucket,
+    s3ProcessedBucket: config.s3?.processedVideoBucket,
+  });
+  for (let delay = 2000; !stopping; delay = Math.min(delay * 2, 30000)) {
     try {
       await startKafkaConsumer(handleTranscodeMessage);
       logger.info("Video Transcoding Service started successfully");
-    } catch (kafkaError) {
-      logger.warn(
-        "Kafka connection failed. Service will continue running; HTTP endpoints are still available."
-      );
-    }
-  } catch (error) {
-    logger.error("Failed to start service", { error });
-    if (error instanceof Error && !error.message.includes("Kafka")) {
-      process.exit(1);
+      return;
+    } catch (error) {
+      logger.warn(`Kafka consumer not started, retrying in ${delay}ms: ${(error as Error)?.message}`);
+      await disconnectKafkaConsumer();
+      await sleep(delay);
     }
   }
 };
@@ -155,12 +131,10 @@ app.listen(PORT, () => {
   logger.info(`HTTP server running on http://localhost:${PORT}`);
 });
 
-startService().catch((error) => {
-  logger.error("Fatal error starting service", { error });
-  process.exit(1);
-});
+startService();
 
 process.on("SIGINT", async () => {
+  stopping = true;
   logger.info("Shutting down gracefully...");
   try {
     await disconnectKafkaConsumer();
@@ -173,6 +147,7 @@ process.on("SIGINT", async () => {
 });
 
 process.on("SIGTERM", async () => {
+  stopping = true;
   logger.info("Shutting down gracefully...");
   try {
     await disconnectKafkaConsumer();

@@ -16,3 +16,6 @@ process.env.PRESIGNED_URL_EXPIRY = '3600';
 process.env.SQS_QUEUE_URL = 'http://localhost:4566/000000000000/test-queue';
 process.env.KAFKA_BROKERS = 'localhost:9092';
 process.env.KAFKA_TOPIC_VIDEO_UPLOADED = 'video.uploaded';
+
+process.env.TRANCODER_API_KEY = 'test_transcoder_key';
+process.env.INTERNAL_API_KEY = 'test_internal_key';

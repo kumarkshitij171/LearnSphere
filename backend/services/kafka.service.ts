@@ -1,7 +1,7 @@
 import { Kafka, Producer } from 'kafkajs';
 
 const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
-const kafka = new Kafka({
+export const kafka = new Kafka({
   clientId: process.env.KAFKA_CLIENT_ID || 'lms-backend',
   brokers,
 });
@@ -14,7 +14,8 @@ export interface VideoUploadedEvent {
   bucket: string;
   key: string;
   inputS3Path: string;
-  resolutions: string[];
+  // optional cap; when absent the transcoder builds the ladder from the source itself
+  resolutions?: string[];
 }
 
 const TOPIC_VIDEO_UPLOADED = process.env.KAFKA_TOPIC_VIDEO_UPLOADED || 'video.uploaded';
@@ -62,7 +63,7 @@ export const publishVideoUploaded = async (event: VideoUploadedEvent): Promise<v
             bucket: event.bucket,
             key: event.key,
             inputS3Path: event.inputS3Path,
-            resolutions: event.resolutions,
+            ...(event.resolutions && { resolutions: event.resolutions }),
             timestamp: new Date().toISOString(),
           }),
         },

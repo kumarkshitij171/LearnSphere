@@ -6,6 +6,9 @@ import {
   getVideo,
   updateVideo,
   deleteVideo,
+  presignReplacement,
+  confirmReplacement,
+  retryVideo,
 } from '../controllers/videoUpload.controller';
 import { authorizedRoles, isAuthenticated } from '../middleware/auth';
 import { requireCourseOwner } from '../middleware/ownership';
@@ -49,6 +52,11 @@ router.post(
 );
 
 // Get video metadata (for playback URL; auth optional depending on your rules)
+// replace a lesson's file, or retry a failed one, without losing the lesson (owner/admin)
+router.post('/:videoId/replace/presign', isAuthenticated, authorizedRoles('INSTRUCTOR'), presignReplacement);
+router.post('/:videoId/replace', isAuthenticated, authorizedRoles('INSTRUCTOR'), confirmReplacement);
+router.post('/:videoId/retry', isAuthenticated, authorizedRoles('INSTRUCTOR'), retryVideo);
+
 router.get(
   '/:videoId',
   isAuthenticated,

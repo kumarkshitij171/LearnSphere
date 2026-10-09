@@ -1,6 +1,7 @@
 services:
   localstack:
-    image: localstack/localstack
+    # 4.14 is the last community release; later tags require a LOCALSTACK_AUTH_TOKEN
+    image: localstack/localstack:4.14
     container_name: localstack
 
     ports:
@@ -15,6 +16,7 @@ services:
     volumes:
       - "./localstack-data:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack/ready.d:/etc/localstack/init/ready.d:ro"
 
 
 # LOCALSTACK_AUTH_TOKEN=your-token-here docker compose -f localstack-file.yml up -d

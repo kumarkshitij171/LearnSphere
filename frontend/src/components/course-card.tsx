@@ -1,42 +1,97 @@
 'use client';
 
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlayCircle, Users } from 'lucide-react';
+import { Layers, PlayCircle, Users } from 'lucide-react';
+import { CourseCover } from '@/components/course-cover';
+import { Badge } from '@/components/ui/badge';
 import type { CourseSummary } from '@/lib/api';
+import { pluralize } from '@/lib/format';
+import { formatPrice } from '@/lib/money';
+import { cn } from '@/lib/utils';
 
-export function CourseCard({ course, href }: { course: CourseSummary; href: string }) {
+export type CourseCardVariant = 'catalogue' | 'learning' | 'studio';
+
+export function CourseCard({
+  course,
+  href,
+  variant = 'catalogue',
+  owned,
+  progress,
+}: {
+  course: CourseSummary;
+  href: string;
+  variant?: CourseCardVariant;
+  /** catalogue: the viewer already has this course */
+  owned?: boolean;
+  /** learning: 0..1, lessons watched */
+  progress?: number;
+}) {
+  const lessons = course._count?.videos ?? 0;
+  const students = course._count?.enrollments;
   return (
-    <Link href={href} className="group block">
-      <Card className="glass h-full border-white/10 transition-colors group-hover:border-white/25">
-        <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-lg">{course.title}</CardTitle>
-            {!course.isPublished ? (
-              <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                Draft
-              </span>
-            ) : null}
-          </div>
-          <CardDescription className="line-clamp-2">{course.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <PlayCircle className="h-4 w-4" />
-            {course._count?.videos ?? 0} videos
-          </span>
-          {course._count?.enrollments != null ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-4 w-4" />
-              {course._count.enrollments}
-            </span>
+    <Link
+      href={href}
+      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-card/50 outline-none transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <CourseCover id={course.id} title={course.title} className="aspect-video w-full">
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between p-2.5">
+          {variant === 'studio' ? (
+            <Badge tone={course.isPublished ? 'success' : 'warning'} dot className="bg-black/55 backdrop-blur">
+              {course.isPublished ? 'Live' : 'Draft'}
+            </Badge>
+          ) : variant === 'catalogue' ? (
+            owned ? (
+              <Badge tone="success" className="bg-black/55 backdrop-blur">Owned</Badge>
+            ) : (
+              <Badge tone={course.price ? 'neutral' : 'primary'} className="bg-black/55 text-white backdrop-blur">
+                {formatPrice(course.price, course.currency)}
+              </Badge>
+            )
           ) : (
-            <span className="font-medium text-foreground">
-              {course.price > 0 ? `$${course.price}` : 'Free'}
-            </span>
+            <span />
           )}
-        </CardContent>
-      </Card>
+        </div>
+        <span className="absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white ring-1 ring-white/20 backdrop-blur">
+            <PlayCircle className="h-6 w-6" />
+          </span>
+        </span>
+        {variant === 'learning' && progress !== undefined ? (
+          <span className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+            <span className="block h-full bg-primary" style={{ width: `${Math.round(progress * 100)}%` }} />
+          </span>
+        ) : null}
+      </CourseCover>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-4">
+        <h3 className="line-clamp-2 font-semibold leading-snug">{course.title}</h3>
+        {course.instructor?.name && variant !== 'studio' ? (
+          <p className="truncate text-sm text-muted-foreground">{course.instructor.name}</p>
+        ) : variant === 'studio' ? (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{course.description}</p>
+        ) : null}
+        <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Layers className="h-3.5 w-3.5" /> {pluralize(lessons, 'lesson')}
+          </span>
+          {variant === 'studio' && students != null ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" /> {pluralize(students, 'student')}
+            </span>
+          ) : variant === 'learning' && progress !== undefined ? (
+            <span className={cn('font-medium tabular-nums', progress >= 1 ? 'text-emerald-300' : 'text-foreground/80')}>
+              {progress >= 1 ? 'Completed' : `${Math.round(progress * 100)}% complete`}
+            </span>
+          ) : variant === 'studio' ? (
+            <span className="font-medium text-foreground/80">{formatPrice(course.price, course.currency)}</span>
+          ) : null}
+        </div>
+      </div>
     </Link>
   );
+}
+
+/** The grid every course list uses. */
+export function CourseGrid({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{children}</div>;
 }

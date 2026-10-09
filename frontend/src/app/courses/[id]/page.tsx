@@ -1,159 +1,160 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import {
-  Loader2,
-  Lock,
-  Play,
-  Pause,
-  CheckCircle2,
-  ChevronRight,
-  Share2,
-  Bookmark,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { ChevronRight, Clock, Film, Layers, Lock, Share2, Sparkles } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
-import { HlsPlayer } from '@/lib/player';
-import { masterPlaylistUrl } from '@/lib/playback';
-import { cn } from '@/lib/utils';
+import { BuyCourse } from '@/components/buy-course';
+import { CourseCover } from '@/components/course-cover';
+import { InstructorPreviewBar } from '@/components/course/instructor-preview-bar';
+import { LessonPlaylist } from '@/components/course/lesson-playlist';
+import { ProgressCard } from '@/components/course/progress-card';
+import { LessonThumbnail } from '@/components/lesson-thumbnail';
+import { VideoPlayer } from '@/components/player/video-player';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toaster';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { coursesApi, getApiErrorMessage, type CourseDetail, type CourseVideo } from '@/lib/api';
+import { courseLength, lessonLength, pluralize } from '@/lib/format';
+import { formatPrice } from '@/lib/money';
+import { masterPlaylistUrl } from '@/lib/playback';
+import { loadProgress, recordProgress, resumePosition, type ProgressMap } from '@/lib/progress';
+import { cn } from '@/lib/utils';
 
-const SUITABLE_FOR = [
-  'Anyone who wants to start their career & get paid for their skills.',
-  'Beginners, newbies & amateurs in the field.',
-  'For anyone that needs to add this topic to their portfolio.',
-  'Aimed at people new to the subject.',
-];
+const THEATER_KEY = 'learnsphere.player.theater';
 
-const POINTS = [25, 50, 75, 100];
-
-function fmtDuration(seconds?: number | null) {
-  if (!seconds || seconds <= 0) return '—';
-  const m = Math.round(seconds / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem ? `${h} hour ${rem} min` : `${h} hour`;
+function readTheater(): boolean {
+  try {
+    return window.localStorage.getItem(THEATER_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
-function LessonRow({
-  video,
-  index,
-  active,
-  completed,
-  onSelect,
-}: {
-  video: CourseVideo;
-  index: number;
-  active: boolean;
-  completed: boolean;
-  onSelect: (v: CourseVideo) => void;
-}) {
-  const ready = video.status === 'READY';
-  return (
-    <button
-      disabled={!ready}
-      onClick={() => onSelect(video)}
-      className={cn(
-        'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
-        active
-          ? 'border-transparent bg-primary text-primary-foreground'
-          : 'border-white/10 hover:border-white/25',
-        !ready && 'cursor-not-allowed opacity-50'
-      )}
-    >
-      <span
-        className={cn(
-          'grid h-9 w-9 shrink-0 place-items-center rounded-full',
-          active ? 'bg-white/20 text-primary-foreground' : 'bg-white/5 text-foreground'
-        )}
-      >
-        {active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{video.title}</span>
-        <span
-          className={cn(
-            'block text-xs',
-            active ? 'text-primary-foreground/80' : 'text-muted-foreground'
-          )}
-        >
-          {ready ? fmtDuration(video.duration) : video.status.toLowerCase()}
-        </span>
-      </span>
-      {completed && !active ? (
-        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-      ) : (
-        <span
-          className={cn(
-            'shrink-0 text-xs',
-            active ? 'text-primary-foreground/70' : 'text-muted-foreground'
-          )}
-        >
-          {String(index + 1).padStart(2, '0')}
-        </span>
-      )}
-    </button>
-  );
+function topQuality(lessons: CourseVideo[]): string | null {
+  const heights = lessons.flatMap((l) => (l.resolutions ?? []).map((r) => Math.min(r.width, r.height)));
+  if (!heights.length) return null;
+  const max = Math.max(...heights);
+  return max >= 2160 ? '4K' : `${max}p`;
 }
 
-export default function CourseDetailPage() {
+function CoursePage() {
   const { user, checking } = useRequireAuth();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const courseId = params.id;
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<CourseVideo | null>(null);
-  const [showFullAbout, setShowFullAbout] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressMap>({});
+  const [theater, setTheater] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const c = await coursesApi.getById(courseId);
-      setCourse(c);
-      setActive((prev) => prev ?? c.videos.find((v) => v.status === 'READY') ?? c.videos[0] ?? null);
-    } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not load the course.'));
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => setTheater(readTheater()), []);
+  useEffect(() => {
+    if (user) setProgress(loadProgress(user.id));
+  }, [user]);
+
+  // returns the course too, so the buy flow can poll until enrolment shows up
+  const reloadCourse = useCallback(async () => {
+    const c = await coursesApi.getById(courseId);
+    setCourse(c);
+    return c;
   }, [courseId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    reloadCourse()
+      .catch((e) => setError(getApiErrorMessage(e, 'Could not load the course.')))
+      .finally(() => setLoading(false));
+  }, [reloadCourse]);
 
-  const enroll = async () => {
-    setEnrolling(true);
-    setError(null);
+  // students only ever see ready lessons; the instructor preview shows exactly the same
+  const lessons = useMemo(() => course?.videos.filter((v) => v.status === 'READY') ?? [], [course]);
+  const hiddenCount = (course?.videos.length ?? 0) - lessons.length;
+  const canManage = Boolean(course && user && (course.instructorId === user.id || user.role === 'ADMIN'));
+
+  // initial lesson: the one in ?lesson=, else the first unfinished one, else the first
+  useEffect(() => {
+    if (!lessons.length || activeId) return;
+    const wanted = searchParams.get('lesson');
+    const fromUrl = wanted ? lessons.find((l) => l.id === wanted) : undefined;
+    const unfinished = lessons.find((l) => !progress[l.id]?.completed);
+    setActiveId((fromUrl ?? unfinished ?? lessons[0])!.id);
+  }, [lessons, activeId, searchParams, progress]);
+
+  const active = lessons.find((l) => l.id === activeId) ?? null;
+  const activeIndex = active ? lessons.indexOf(active) : -1;
+
+  const select = useCallback(
+    (lesson: CourseVideo) => {
+      setActiveId(lesson.id);
+      router.replace(`/courses/${courseId}?lesson=${lesson.id}`, { scroll: false });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [courseId, router]
+  );
+
+  const neighbour = (i: number) => {
+    const l = lessons[i];
+    return l
+      ? {
+          title: l.title,
+          onPlay: () => select(l),
+          thumbnail: <LessonThumbnail video={l} className="h-full w-full" />,
+        }
+      : null;
+  };
+
+  const toggleTheater = (on: boolean) => {
+    setTheater(on);
     try {
-      await coursesApi.enroll(courseId);
-      await load();
-    } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not enroll.'));
-    } finally {
-      setEnrolling(false);
+      window.localStorage.setItem(THEATER_KEY, on ? '1' : '0');
+    } catch {
+      // a preference, not state
     }
   };
 
-  const activeIndex = useMemo(
-    () => (course && active ? course.videos.findIndex((v) => v.id === active.id) : -1),
-    [course, active]
+  const onProgress = useCallback(
+    (position: number, duration: number, ended: boolean) => {
+      if (!user || !active) return;
+      setProgress(recordProgress(user.id, courseId, active.id, position, duration, ended));
+    },
+    [user, active, courseId]
   );
-  // Visual-only progress: lessons before the active one read as completed.
-  const completedCount = activeIndex > 0 ? activeIndex : 0;
-  const total = course?.videos.length ?? 0;
-  const progressPct = total ? Math.round((completedCount / total) * 100) : 0;
+
+  const share = async () => {
+    const url = `${window.location.origin}/courses/${courseId}`;
+    try {
+      if (navigator.share) await navigator.share({ title: course?.title, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copied');
+      }
+    } catch {
+      // the share sheet was dismissed
+    }
+  };
 
   if (checking || !user || loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto grid max-w-[1600px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-8">
+          <div className="space-y-4">
+            <Skeleton className="aspect-video w-full rounded-2xl" />
+            <Skeleton className="h-7 w-2/3" />
+            <Skeleton className="h-4 w-1/3" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-80 w-full rounded-2xl" />
+          </div>
+        </div>
       </main>
     );
   }
@@ -161,171 +162,210 @@ export default function CourseDetailPage() {
   if (!course) {
     return (
       <AppShell user={user}>
-        <div className="px-6 py-16 text-center text-muted-foreground">{error || 'Course not found.'}</div>
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <EmptyState
+            icon={<Film />}
+            title="This course isn't available"
+            description={error ?? 'It may have been unpublished or removed.'}
+            action={
+              <Button asChild variant="outline">
+                <Link href="/dashboard">Browse courses</Link>
+              </Button>
+            }
+          />
+        </div>
       </AppShell>
     );
   }
 
-  const aboutLong = course.description.length > 260;
-  const aboutText =
-    showFullAbout || !aboutLong ? course.description : `${course.description.slice(0, 260)}…`;
+  const totalLength = lessons.reduce((s, l) => s + (l.duration ?? 0), 0);
+  const curriculum = course.curriculum ?? [];
+  const quality = topQuality(lessons);
+  const aboutLong = course.description.length > 280;
+
+  const player = active ? (
+    <VideoPlayer
+      key={active.id}
+      src={masterPlaylistUrl(active)}
+      title={active.title}
+      previous={neighbour(activeIndex - 1)}
+      next={neighbour(activeIndex + 1)}
+      theater={theater}
+      onTheaterChange={toggleTheater}
+      shortcuts="global"
+      autoPlay={Boolean(searchParams.get('lesson'))}
+      startAt={resumePosition(progress[active.id])}
+      onProgress={onProgress}
+      maxHeightVh={theater ? 82 : 72}
+    />
+  ) : null;
+
+  const lockedHero = (
+    <CourseCover id={course.id} title={course.title} size="lg" className="aspect-video w-full rounded-2xl ring-1 ring-white/10">
+      <div className="absolute inset-0 grid place-items-center bg-black/45">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-black/60 ring-1 ring-white/20 backdrop-blur">
+            <Lock className="h-6 w-6" />
+          </span>
+          <p className="text-sm font-medium text-white/90">
+            {curriculum.length ? `${pluralize(curriculum.length, 'lesson')} waiting for you` : 'Lessons are on the way'}
+          </p>
+        </div>
+      </div>
+    </CourseCover>
+  );
+
+  const purchase = (
+    <Suspense fallback={null}>
+      <BuyCourse course={course} reloadCourse={reloadCourse} />
+    </Suspense>
+  );
+
+  const details = (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">
+          {active && course.canAccessVideos ? active.title : course.title}
+        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-lime-300 to-emerald-400 text-sm font-bold text-[#0A0A0F]">
+              {(course.instructor?.name || 'In').slice(0, 2).toUpperCase()}
+            </span>
+            <div className="leading-tight">
+              <p className="font-semibold">{course.instructor?.name || 'Instructor'}</p>
+              <p className="text-xs text-muted-foreground">
+                {active && course.canAccessVideos ? (
+                  <>
+                    {course.title} · Lesson {activeIndex + 1} of {lessons.length}
+                  </>
+                ) : (
+                  'Instructor'
+                )}
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={share} className="gap-2">
+            <Share2 className="h-4 w-4" /> Share
+          </Button>
+        </div>
+      </div>
+
+      <section className="space-y-3 rounded-2xl border border-white/[0.08] bg-card/40 p-5">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={course.canAccessVideos ? 'success' : 'primary'}>
+            {course.canAccessVideos ? (canManage ? 'Your course' : 'Owned') : formatPrice(course.price, course.currency)}
+          </Badge>
+          <Badge>
+            <Layers className="h-3 w-3" /> {pluralize(course.canAccessVideos ? lessons.length : curriculum.length, 'lesson')}
+          </Badge>
+          {totalLength || curriculum.some((c) => c.duration) ? (
+            <Badge>
+              <Clock className="h-3 w-3" />
+              {courseLength(totalLength || curriculum.reduce((s, c) => s + (c.duration ?? 0), 0))}
+            </Badge>
+          ) : null}
+          {quality ? (
+            <Badge>
+              <Sparkles className="h-3 w-3" /> Up to {quality}
+            </Badge>
+          ) : null}
+        </div>
+        <h2 className="pt-1 font-semibold">About this course</h2>
+        <p className={cn('whitespace-pre-line text-sm leading-relaxed text-muted-foreground', !aboutOpen && aboutLong && 'line-clamp-4')}>
+          {course.description}
+        </p>
+        {aboutLong ? (
+          <button type="button" onClick={() => setAboutOpen((o) => !o)} className="text-sm font-medium text-primary hover:underline">
+            {aboutOpen ? 'Show less' : 'Show more'}
+          </button>
+        ) : null}
+      </section>
+
+      {!course.canAccessVideos && curriculum.length ? (
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-card/40">
+          <h2 className="border-b border-white/[0.06] px-5 py-3.5 font-semibold">What you&apos;ll watch</h2>
+          <ol className="divide-y divide-white/[0.05]">
+            {curriculum.map((c, i) => (
+              <li key={`${i}-${c.title}`} className="flex items-center gap-3 px-5 py-3 text-sm">
+                <span className="w-5 text-xs tabular-nums text-muted-foreground">{i + 1}</span>
+                <Lock className="h-3.5 w-3.5 text-muted-foreground/70" />
+                <span className="flex-1 truncate">{c.title}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">{lessonLength(c.duration)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+    </div>
+  );
+
+  const rail = course.canAccessVideos ? (
+    <div className="space-y-4">
+      <ProgressCard lessons={lessons} progress={progress} activeId={activeId} onPlay={select} />
+      {lessons.length ? (
+        <LessonPlaylist lessons={lessons} activeId={activeId} progress={progress} onSelect={select} hiddenCount={canManage ? hiddenCount : 0} />
+      ) : null}
+    </div>
+  ) : (
+    purchase
+  );
+
+  const noLessons = course.canAccessVideos && lessons.length === 0 && (
+    <EmptyState
+      icon={<Film />}
+      title="No lessons to watch yet"
+      description={canManage ? 'Add a lesson in the studio — it appears here once it has finished processing.' : 'The instructor is still preparing this course. Check back soon.'}
+      action={
+        canManage ? (
+          <Button asChild>
+            <Link href={`/courses/${course.id}/manage`}>Open studio</Link>
+          </Button>
+        ) : undefined
+      }
+      className="aspect-video justify-center"
+    />
+  );
 
   return (
     <AppShell user={user}>
-      <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        {/* Left / main column */}
-        <div className="min-w-0 space-y-5">
-          <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Link href="/dashboard" className="hover:text-foreground">My Courses</Link>
-            <ChevronRight className="h-4 w-4" />
-            <span className="max-w-[200px] truncate text-foreground/80">{course.title}</span>
-            <ChevronRight className="h-4 w-4" />
-            <span className="text-foreground">Course</span>
-          </nav>
+      {canManage ? <InstructorPreviewBar courseId={course.id} published={course.isPublished} /> : null}
+      <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8">
+        <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground" aria-label="Breadcrumb">
+          <Link href="/dashboard" className="transition-colors hover:text-foreground">
+            Home
+          </Link>
+          <ChevronRight className="h-3.5 w-3.5" />
+          <span className="truncate text-foreground/80">{course.title}</span>
+        </nav>
 
-          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{course.title}</h1>
-
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-          {!course.canAccessVideos ? (
-            <Card className="glass border-white/10">
-              <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
-                <Lock className="h-8 w-8 text-muted-foreground" />
-                <p className="text-muted-foreground">Enroll to watch this course.</p>
-                <Button onClick={enroll} disabled={enrolling} className="gap-2">
-                  {enrolling ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {course.price > 0 ? `Enroll · $${course.price}` : 'Enroll for free'}
-                </Button>
-              </CardContent>
-            </Card>
-          ) : active ? (
-            <HlsPlayer
-              src={masterPlaylistUrl(active)}
-              className="aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black"
-            />
-          ) : (
-            <Card className="glass border-white/10">
-              <CardContent className="py-16 text-center text-muted-foreground">
-                No videos are ready to watch yet.
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Instructor */}
-          <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-5">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-lime-300 to-emerald-400 text-sm font-bold text-[#0A0A0F]">
-                {(course.instructor?.name || 'In').slice(0, 2).toUpperCase()}
-              </span>
-              <div>
-                <p className="font-semibold">{course.instructor?.name || 'Instructor'}</p>
-                <p className="text-xs text-muted-foreground">Mentor · Course Instructor</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-muted-foreground transition-colors hover:text-foreground" title="Share">
-                <Share2 className="h-4 w-4" />
-              </button>
-              <button className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-muted-foreground transition-colors hover:text-foreground" title="Save">
-                <Bookmark className="h-4 w-4" />
-              </button>
+        {theater && course.canAccessVideos ? (
+          <div className="space-y-6">
+            <div className="-mx-4 bg-black sm:-mx-6 lg:-mx-8">{player}</div>
+            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+              {details}
+              {rail}
             </div>
           </div>
-
-          {/* About */}
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">About This Course</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">{aboutText}</p>
-            {aboutLong && (
-              <button
-                onClick={() => setShowFullAbout((s) => !s)}
-                className="mt-2 text-sm font-medium text-primary hover:underline"
-              >
-                {showFullAbout ? 'Show less' : 'Show more'}
-              </button>
-            )}
-          </section>
-
-          {/* Suitable for */}
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">This Course Suit For:</h2>
-            <ul className="space-y-1.5 text-sm text-muted-foreground">
-              {SUITABLE_FOR.map((line) => (
-                <li key={line} className="flex gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-
-        {/* Right rail */}
-        <aside className="space-y-5">
-          {/* Study progress (visual) */}
-          <Card className="glass border-white/10">
-            <CardContent className="space-y-4 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Your Study Progress</h3>
-                <span className="text-sm font-semibold text-primary">{progressPct}%</span>
-              </div>
-              <div className="relative">
-                <div className="absolute left-0 top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-white/10" />
-                <div
-                  className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary transition-all"
-                  style={{ width: `${progressPct}%` }}
-                />
-                <div className="relative flex justify-between">
-                  {POINTS.map((p, i) => {
-                    const reached = progressPct >= (i / (POINTS.length - 1)) * 100;
-                    return (
-                      <div key={p} className="flex flex-col items-center gap-1.5">
-                        <span
-                          className={cn(
-                            'h-3 w-3 rounded-full ring-4 ring-background',
-                            reached ? 'bg-primary' : 'bg-white/20'
-                          )}
-                        />
-                        <span className="text-[11px] text-muted-foreground">{p} Points</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <p className="rounded-lg bg-white/[0.03] p-3 text-xs leading-relaxed text-muted-foreground">
-                Great job! 🎉 You&apos;re on the path to mastering <b>{course.title}</b>. Keep going —
-                finish strong!
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Course completion + lessons */}
-          <div>
-            <div className="mb-3 flex items-center justify-between px-1">
-              <h3 className="font-semibold">Course Completion</h3>
-              <span className="text-sm text-muted-foreground">
-                {completedCount}/{total}
-              </span>
+        ) : (
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+            <div className="min-w-0 space-y-6">
+              {course.canAccessVideos ? player ?? noLessons : lockedHero}
+              {details}
             </div>
-            <div className="space-y-2">
-              {course.videos.length === 0 ? (
-                <p className="px-1 text-sm text-muted-foreground">No lessons yet.</p>
-              ) : (
-                course.videos.map((v, i) => (
-                  <LessonRow
-                    key={v.id}
-                    video={v}
-                    index={i}
-                    active={active?.id === v.id}
-                    completed={i < completedCount}
-                    onSelect={setActive}
-                  />
-                ))
-              )}
-            </div>
+            <aside className="space-y-4 lg:sticky lg:top-20">{rail}</aside>
           </div>
-        </aside>
+        )}
       </div>
     </AppShell>
+  );
+}
+
+export default function CourseDetailPage() {
+  // useSearchParams needs a Suspense boundary under the App Router
+  return (
+    <Suspense fallback={null}>
+      <CoursePage />
+    </Suspense>
   );
 }

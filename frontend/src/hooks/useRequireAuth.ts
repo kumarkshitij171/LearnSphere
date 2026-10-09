@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { usersApi, type CurrentUser, type Role } from '@/lib/api';
+import { usersApi, onSessionExpired, type CurrentUser, type Role } from '@/lib/api';
 
 // Protect a page that needs a session. Redirects to /login if unauthenticated.
 export function useRequireAuth() {
@@ -26,8 +26,13 @@ export function useRequireAuth() {
         if (active) router.replace('/login');
       }
     })();
+    // a refresh that fails anywhere (a poll, a background call) means the session is gone
+    const unsubscribe = onSessionExpired(() => {
+      if (active) router.replace('/login');
+    });
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [router]);
 
@@ -36,7 +41,8 @@ export function useRequireAuth() {
 
 // Protect a page that needs a specific role; sends others back to /dashboard.
 export function useRequireRole(roles: Role | Role[]) {
-  const allowed = Array.isArray(roles) ? roles : [roles];
+  const key = Array.isArray(roles) ? roles.join(',') : roles;
+  const allowed = useMemo(() => key.split(',') as Role[], [key]);
   const { user, checking } = useRequireAuth();
   const router = useRouter();
 

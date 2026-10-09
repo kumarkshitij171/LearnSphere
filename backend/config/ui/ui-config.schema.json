@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://learnsphere.dev/schemas/ui-config.v1.json",
+  "title": "LearnSphere UI configuration",
+  "description": "Presentation only: what the frontend shows. Never business rules, never executable content. The public read endpoint serves this document, so it must never hold a secret.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "branding", "theme", "navigation", "home", "features", "copy", "announcement"],
+  "properties": {
+    "schemaVersion": { "description": "Bumped only on a breaking change; see config/ui/migrations.ts.", "enum": [1] },
+    "branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appName", "wordmark", "tagline", "logoUrl", "supportEmail"],
+      "properties": {
+        "appName": { "description": "Used in titles, emails and the footer.", "type": "string", "minLength": 1, "maxLength": 40 },
+        "wordmark": {
+          "description": "The logo text: `primary` in the foreground colour, `accent` in the primary colour.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary", "accent"],
+          "properties": {
+            "primary": { "type": "string", "maxLength": 24 },
+            "accent": { "type": "string", "maxLength": 24 }
+          }
+        },
+        "tagline": { "type": "string", "maxLength": 80 },
+        "logoUrl": { "description": "Relative path or https URL. null = the default icon.", "type": ["string", "null"], "maxLength": 500, "pattern": "^(/|https://)" },
+        "supportEmail": { "type": "string", "maxLength": 120, "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" }
+      }
+    },
+    "theme": {
+      "description": "HSL triplets (\"H S% L%\") matching the CSS variables in globals.css.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "accent", "background", "radius"],
+      "properties": {
+        "primary": { "$ref": "#/definitions/hsl" },
+        "accent": { "$ref": "#/definitions/hsl" },
+        "background": { "$ref": "#/definitions/hsl" },
+        "radius": { "description": "Corner radius, e.g. 0.75rem.", "type": "string", "pattern": "^(0|[0-9]*\\.?[0-9]+(rem|px))$" }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sidebar", "sidebarBottom"],
+      "properties": {
+        "sidebar": { "type": "array", "maxItems": 12, "items": { "$ref": "#/definitions/navItem" } },
+        "sidebarBottom": { "type": "array", "maxItems": 6, "items": { "$ref": "#/definitions/navItem" } }
+      }
+    },
+    "home": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hero", "sections"],
+      "properties": {
+        "hero": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["eyebrow", "title", "titleHighlight", "subtitle", "ctaLabel", "ctaHref", "footnote"],
+          "properties": {
+            "eyebrow": { "type": "string", "maxLength": 60 },
+            "title": { "type": "string", "minLength": 1, "maxLength": 60 },
+            "titleHighlight": { "description": "Rendered after the title with the gradient.", "type": "string", "maxLength": 60 },
+            "subtitle": { "type": "string", "maxLength": 280 },
+            "ctaLabel": { "type": "string", "minLength": 1, "maxLength": 40 },
+            "ctaHref": { "$ref": "#/definitions/href" },
+            "footnote": { "type": "string", "maxLength": 120 }
+          }
+        },
+        "sections": {
+          "description": "The home page sections below the hero, in display order.",
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "enabled"],
+            "properties": {
+              "type": { "enum": ["features", "howItWorks", "finalCta"] },
+              "enabled": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "features": {
+      "description": "Display-only toggles. Hiding the Buy button does not stop purchases: order-service still decides.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purchases", "instructorRequests", "studyProgress"],
+      "properties": {
+        "purchases": { "type": "boolean" },
+        "instructorRequests": { "type": "boolean" },
+        "studyProgress": { "type": "boolean" }
+      }
+    },
+    "copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["courseLocked", "purchasesPaused", "emptyCatalogue"],
+      "properties": {
+        "courseLocked": { "type": "string", "maxLength": 280 },
+        "purchasesPaused": { "type": "string", "maxLength": 280 },
+        "emptyCatalogue": { "type": "string", "maxLength": 280 }
+      }
+    },
+    "announcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "message", "tone", "href"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "message": { "type": "string", "maxLength": 200 },
+        "tone": { "enum": ["info", "success", "warning"] },
+        "href": { "description": "Optional link; null for none.", "type": ["string", "null"], "maxLength": 500, "pattern": "^(/|https://)" }
+      }
+    }
+  },
+  "definitions": {
+    "hsl": { "type": "string", "pattern": "^\\d{1,3} \\d{1,3}% \\d{1,3}%$" },
+    "href": { "description": "A relative path or an https URL. Anything else (javascript:, data:) is rejected.", "type": "string", "maxLength": 500, "pattern": "^(/|https://)" },
+    "navItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "icon", "href", "roles", "enabled"],
+      "properties": {
+        "id": { "description": "Stable key; unique across sidebar and sidebarBottom.", "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "icon": {
+          "enum": ["LayoutDashboard", "BookOpen", "Bookmark", "ClipboardList", "Compass", "Award", "Receipt", "HelpCircle",
+                   "Settings", "ShieldCheck", "SlidersHorizontal", "GraduationCap", "Users", "PlayCircle", "Bell", "Sparkles"]
+        },
+        "href": { "description": "null renders the item as not yet available.", "type": ["string", "null"], "maxLength": 500, "pattern": "^(/|https://)" },
+        "roles": {
+          "description": "Who sees it; [] = everyone. Cosmetic only: routes and APIs enforce access.",
+          "type": "array",
+          "maxItems": 3,
+          "items": { "enum": ["STUDENT", "INSTRUCTOR", "ADMIN"] }
+        },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

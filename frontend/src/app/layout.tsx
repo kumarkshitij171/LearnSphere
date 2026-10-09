@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { loadUiConfig } from "@/lib/ui-config/server";
+import { UiConfigProvider, themeVars } from "@/lib/ui-config";
+import { AnnouncementBanner } from "@/components/announcement-banner";
+import { AppProviders } from "@/components/providers";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -20,23 +24,33 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "LearnSphere — Learn without limits",
-  description:
-    "LearnSphere is a modern learning platform to create, manage and grow with expert-led courses.",
-};
+// Next dedupes this fetch with the one in RootLayout.
+export async function generateMetadata(): Promise<Metadata> {
+  const { config } = await loadUiConfig();
+  return {
+    title: `${config.branding.appName} — ${config.branding.tagline}`,
+    description: config.home.hero.subtitle,
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read on the server so the theme is right on first paint, not swapped in after hydration.
+  const { config } = await loadUiConfig();
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" style={themeVars(config.theme) as React.CSSProperties}>
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans`}
       >
-        {children}
+        <UiConfigProvider config={config}>
+          <AppProviders>
+            <AnnouncementBanner />
+            {children}
+          </AppProviders>
+        </UiConfigProvider>
       </body>
     </html>
   );
