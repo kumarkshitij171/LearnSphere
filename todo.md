@@ -101,7 +101,8 @@ proxied through the Node process that also runs FFmpeg
 - [x] **transcoder Phase 1 — delete the dead weight, fail fast**
   - [x] Delete `src/services/db.service.ts`, `prisma/`, the `postinstall`
         `prisma generate`, `DATABASE_URL` (`DATABASE_DESIGN.md` §3.2)
-  - [x] Resolve `src/utils/transcode.js` vs the TypeScript source
+  - [x] Resolve `src/utils/transcode.js` vs the TypeScript source — not imported;
+        kept as the standalone POC, checked by `scripts/transcode.sh`
   - [x] Require `TRANCODER_API_KEY`, both buckets and FFmpeg **at startup** —
         today a missing key silently skips the callback and the video sits at
         `UPLOADED` forever

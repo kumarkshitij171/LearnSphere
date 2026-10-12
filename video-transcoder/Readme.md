@@ -32,6 +32,20 @@ npm test                       # node:test, including real-ffprobe checks on gen
 npm run build && npm start      # compiled
 ```
 
+### The standalone POC script
+
+`src/utils/transcode.js` is the original proof of concept. It turns one local video into an HLS set on disk, with no Kafka, S3 or backend involved, which makes it handy for trying FFmpeg settings quickly.
+
+```bash
+node src/utils/transcode.js path/to/video.mp4 path/to/out   # writes path/to/out/hls/master.m3u8
+node src/utils/transcode.js                                 # defaults: src/constants/clip1.mp4 → src/constants/out
+scripts/transcode.sh                                        # checks it on generated clips (about 10 s)
+```
+
+It produces 240p, 480p, 720p and 1080p, but only the ones the source can fill, so a 480p upload gets 240p and 480p. A portrait or rotated phone video stays portrait. Every rendition has keyframes every 2 s and cuts 6 s segments at the same points. Compared with the service, it stops at 1080p, takes no poster and uploads nothing.
+
+`scripts/transcode.sh` runs it on landscape, portrait, rotated, 480p, tiny, silent and scene-cut clips, on paths with spaces, and on corrupt, audio-only and missing files. It checks the sizes, the master playlist, the audio and the segment boundaries, and decodes every rendition. `KEEP=1` keeps the files it generates.
+
 ## Trying it end to end
 
 1. Sign in as an instructor in the frontend and upload a video to a course.

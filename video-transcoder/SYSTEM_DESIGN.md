@@ -172,9 +172,10 @@ It is the only reason this service carries a duplicated `prisma/schema.prisma`,
 a `postinstall` `prisma generate` and a `DATABASE_URL`. **Delete all four.** Full
 argument and options in `../DATABASE_DESIGN.md` §3.2.
 
-There is also `src/utils/transcode.js` sitting beside the TypeScript sources —
-check which file is actually imported before editing either, and delete the one
-that is not.
+There is also `src/utils/transcode.js` sitting beside the TypeScript sources.
+Nothing imports it: it is the original standalone POC (one local file → HLS on
+disk) and is **kept on purpose** as a reference, checked by
+`scripts/transcode.sh`. It is not part of the pipeline.
 
 ---
 
@@ -646,14 +647,16 @@ change across `.env.example`, `frontend/src/config/env.ts`, the README and
 Each phase leaves the service running and is independently reviewable.
 
 ### Phase 1 — delete the dead weight, fail fast
-**Status: ✅ done.** `db.service.ts`, `prisma/`, `src/utils/transcode.js` and
-`DATABASE_URL` are gone; `src/config/validate.ts` refuses to start without the
+**Status: ✅ done.** `db.service.ts`, `prisma/` and `DATABASE_URL` are gone
+(`src/utils/transcode.js` was deleted too, then restored at the user's request
+as the standalone POC — §4.3); `src/config/validate.ts` refuses to start without the
 key, the buckets or an executable FFmpeg (and, since 3a, FFprobe).
 
 Remove `src/services/db.service.ts`, `prisma/`, the `postinstall`
-`prisma generate` and `DATABASE_URL`; resolve `src/utils/transcode.js` vs the TS
-source; require `TRANCODER_API_KEY`, both S3 buckets and FFmpeg **at startup**
-and exit if any is missing (§4.2 ②).
+`prisma generate` and `DATABASE_URL`; confirm nothing imports
+`src/utils/transcode.js` (it stays, as the standalone POC); require
+`TRANCODER_API_KEY`, both S3 buckets and FFmpeg **at startup** and exit if any
+is missing (§4.2 ②).
 **Verify:** `npm run build` clean; the service refuses to start without the key;
 a full upload → `READY` still works.
 **Why first:** it is subtraction only, and it removes the silent-success failure

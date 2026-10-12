@@ -19,6 +19,8 @@ npm run dev            # tsx watch src/index.ts
 npm test               # node:test over src/**/*.test.ts
 npm run build          # tsc
 npm start              # node dist/index.js
+node src/utils/transcode.js in.mp4 out/   # standalone POC script, see Gotchas
+scripts/transcode.sh                      # checks the POC script on generated clips
 ```
 
 Because it is ESM: relative imports need file extensions, and there is no
@@ -53,7 +55,10 @@ src/
 │   ├── poster.ts                 one JPEG frame for thumbnails
 │   ├── transcode.service.ts      download → probe → poster → encode each rung → master → upload
 │   └── backend-api.service.ts    the /processed callback, with retry
-└── utils/logger.ts
+└── utils/
+    ├── logger.ts
+    └── transcode.js              standalone POC script — not imported by the service
+scripts/transcode.sh              checks the POC script against generated edge-case clips
 ```
 
 Tests sit next to the code as `*.test.ts` (`node:test` + `node:assert/strict`).
@@ -102,6 +107,12 @@ get the consumer evicted and the video transcoded twice. `Video.status` goes
   arguments. Pass FFmpeg options as separate array elements with no spaces.
 - HDR sources are encoded without tone-mapping (colours look flat) — known and
   deferred, not a bug.
+- **`src/utils/transcode.js` is kept on purpose.** It is the original POC: plain
+  JS, one local file → HLS on disk, no Kafka/S3/callback. It picks the
+  240p–1080p rungs the source can fill, keeps portrait portrait and aligns
+  keyframes; it has no poster and stops at 1080p. Nothing imports it and `tsc`
+  skips it (no `allowJs`). Do not delete it as dead code. After changing it, run
+  `scripts/transcode.sh`, which must report 0 failed.
 
 ## Comments
 
