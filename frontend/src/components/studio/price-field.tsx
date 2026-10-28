@@ -51,7 +51,7 @@ export function PriceField({
         <label htmlFor={id} className="text-sm font-medium">
           Price
         </label>
-        <div role="radiogroup" aria-label="Pricing" className="inline-flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/10">
+        <div role="radiogroup" aria-label="Pricing" className="inline-flex rounded-lg bg-foreground/[0.04] p-0.5 ring-1 ring-foreground/10">
           {(['free', 'paid'] as const).map((kind) => {
             const active = kind === 'free' ? value.free : !value.free;
             return (
@@ -64,7 +64,7 @@ export function PriceField({
                 onClick={() => onChange({ ...value, free: kind === 'free' })}
                 className={cn(
                   'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
-                  active ? 'bg-white/10 text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  active ? 'bg-foreground/10 text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 {kind === 'free' ? 'Free' : 'Paid'}
@@ -75,18 +75,18 @@ export function PriceField({
       </div>
 
       {value.free ? (
-        <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-border bg-foreground/[0.02] px-3 py-2.5 text-sm text-muted-foreground">
           Anyone can enrol for free.
         </p>
       ) : (
         <>
           <div
             className={cn(
-              'flex h-11 items-center overflow-hidden rounded-lg border bg-white/[0.03] transition-colors focus-within:ring-2',
-              problem ? 'border-red-500/50 focus-within:ring-red-500/30' : 'border-white/10 focus-within:border-primary/50 focus-within:ring-primary/30'
+              'flex h-11 items-center overflow-hidden rounded-lg border bg-foreground/[0.03] transition-colors focus-within:ring-2',
+              problem ? 'border-danger/50 focus-within:ring-danger/30' : 'border-border focus-within:border-primary/50 focus-within:ring-primary/30'
             )}
           >
-            <span className="grid h-full place-items-center border-r border-white/10 bg-white/[0.03] px-3 text-sm font-semibold text-muted-foreground">
+            <span className="grid h-full place-items-center border-r border-border bg-foreground/[0.03] px-3 text-sm font-semibold text-muted-foreground">
               {symbol}
             </span>
             <input
@@ -103,7 +103,7 @@ export function PriceField({
               aria-describedby={`${id}-hint`}
             />
           </div>
-          <p id={`${id}-hint`} className={cn('text-xs', problem ? 'text-red-300' : 'text-muted-foreground')}>
+          <p id={`${id}-hint`} className={cn('text-xs', problem ? 'text-danger' : 'text-muted-foreground')}>
             {problem ?? (value.amount ? `Students pay ${formatPrice(Number(value.amount), currency)}` : 'Between ₹1 and ₹5,00,000.')}
           </p>
         </>

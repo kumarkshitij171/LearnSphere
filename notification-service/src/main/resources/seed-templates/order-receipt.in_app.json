@@ -1,0 +1,7 @@
+{
+  "name": "order-receipt",
+  "channel": "IN_APP",
+  "subject": "You're in — {{courseTitle}}",
+  "templateVariables": { "courseTitle": null, "amount": null, "name": "there", "orderId": null, "paymentId": "—", "purchasedAt": null },
+  "templateMessage": "Payment of {{amount}} received. Your course is unlocked — start watching now."
+}

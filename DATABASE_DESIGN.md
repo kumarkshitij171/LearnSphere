@@ -315,7 +315,7 @@ deployment decision, and it is about to change (CloudFront, P1).
 
 | Store | Mechanism | Honest assessment |
 |---|---|---|
-| Postgres `public` | `npx prisma db push` | **A development tool.** It diffs and applies with no migration history, no review artefact and no down path. Fine for a schema being reshaped daily; unacceptable for production |
+| Postgres `public` | `prisma migrate` since 28 Oct 2026 (baseline `0_init`) | Migration history in git, `migrate deploy` in CI/production. The pre-baseline 2024 migration is kept in `prisma/migrations-archive/` for reference only |
 | Postgres `orders` | Flyway (planned) | Correct from the start |
 | MongoDB | none | Schemaless by choice; `templates.version` carries content versioning |
 

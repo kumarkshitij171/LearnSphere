@@ -1,15 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUiConfig } from '@/lib/ui-config';
 
 interface LogoProps {
   className?: string;
-  /** Render the wordmark next to the icon. */
+  /** Render the wordmark next to the mark. */
   withText?: boolean;
   href?: string;
+}
+
+/** An ink tile with a highlight play glyph; the config's logo wins when set. */
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-[8px] bg-foreground text-highlight theater:bg-highlight theater:text-highlight-foreground', className)}>
+      <svg viewBox="0 0 24 24" className="h-3 w-3 translate-x-[1px]" fill="currentColor">
+        <path d="M7 4.5v15l12-7.5z" />
+      </svg>
+    </span>
+  );
 }
 
 export function Logo({ className, withText = true, href = '/' }: LogoProps) {
@@ -18,16 +28,14 @@ export function Logo({ className, withText = true, href = '/' }: LogoProps) {
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       {branding.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- admin-supplied URL; next/image would need its host allow-listed
-        <img src={branding.logoUrl} alt={branding.appName} className="h-9 w-9 rounded-xl object-contain" />
+        <img src={branding.logoUrl} alt={branding.appName} className="h-7 w-7 rounded-[8px] object-contain" />
       ) : (
-        <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-400 text-[#0A0A0F] shadow-[0_0_20px_-4px_hsl(var(--primary)/0.6)]">
-          <GraduationCap className="h-5 w-5" strokeWidth={2.5} />
-        </span>
+        <BrandMark />
       )}
       {withText && (
-        <span className="font-display text-lg font-bold tracking-tight text-foreground">
+        <span className="text-[16px] font-semibold tracking-[-0.02em] text-foreground">
           {branding.wordmark.primary}
-          <span className="text-primary">{branding.wordmark.accent}</span>
+          {branding.wordmark.accent}
         </span>
       )}
     </span>
@@ -36,7 +44,7 @@ export function Logo({ className, withText = true, href = '/' }: LogoProps) {
   if (!href) return content;
 
   return (
-    <Link href={href} className="inline-flex items-center transition-opacity hover:opacity-90">
+    <Link href={href} className="inline-flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35">
       {content}
     </Link>
   );

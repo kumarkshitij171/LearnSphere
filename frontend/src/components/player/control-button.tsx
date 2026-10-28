@@ -26,7 +26,7 @@ export const ControlButton = forwardRef<HTMLButtonElement, ControlButtonProps>(f
       aria-pressed={pressed}
       className={cn(
         'group/btn relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-white outline-none transition-colors',
-        'hover:bg-white/10 focus-visible:bg-white/15 focus-visible:ring-2 focus-visible:ring-primary/70 active:scale-95',
+        'hover:bg-white/10 focus-visible:bg-white/15 focus-visible:ring-2 focus-visible:ring-highlight/70 active:scale-95',
         className
       )}
       {...rest}

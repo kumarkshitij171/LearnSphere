@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { publishVideoUploaded } from './kafka.service';
 import { deleteS3Prefix, deleteVideoS3Artifacts } from './s3.service';
+import { removeThumbnail } from './asset.service';
 import type { RenditionReport, TranscodeErrorCode } from '../utils/validation';
 
 const prisma = new PrismaClient();
@@ -96,15 +97,19 @@ export const getVideoById = async (videoId: string) => {
   });
 };
 
+export const findVideoThumbnail = (videoId: string) =>
+  prisma.video.findUnique({ where: { id: videoId }, select: { id: true, thumbnail: true } });
+
 export interface UpdateVideoInput {
   title?: string;
   description?: string | null;
+  thumbnail?: string | null;
 }
 
 export const updateVideoRecord = async (videoId: string, data: UpdateVideoInput) =>
   prisma.video.update({ where: { id: videoId }, data });
 
-// Removes transcode jobs + the video row, then best-effort deletes its S3 artifacts.
+// Removes transcode jobs + the video row, then best-effort deletes its S3 artifacts and thumbnail.
 export const deleteVideoRecord = async (videoId: string) => {
   const video = await prisma.video.findUnique({ where: { id: videoId } });
   if (!video) return null;
@@ -112,6 +117,7 @@ export const deleteVideoRecord = async (videoId: string) => {
   await prisma.videoTranscodeJob.deleteMany({ where: { videoId } });
   await prisma.video.delete({ where: { id: videoId } });
   await deleteVideoS3Artifacts(video.originalKey, video.id);
+  await removeThumbnail('lesson', video.id, video.thumbnail);
 
   return video;
 };

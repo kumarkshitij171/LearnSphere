@@ -37,8 +37,8 @@ export function LessonPlaylist({
   const total = lessons.reduce((s, l) => s + (l.duration ?? 0), 0);
   const index = lessons.findIndex((l) => l.id === activeId);
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-white/[0.08] bg-card/50', className)} aria-label="Course content">
-      <header className="border-b border-white/[0.06] px-4 py-3.5">
+    <section className={cn('overflow-hidden rounded-[14px] border border-border bg-background', className)} aria-label="Course content">
+      <header className="border-b border-border px-4 py-3.5">
         <h3 className="font-semibold">Course content</h3>
         <p className="text-xs text-muted-foreground">
           {index >= 0 ? `Lesson ${index + 1} of ${lessons.length}` : pluralize(lessons.length, 'lesson')}
@@ -57,21 +57,21 @@ export function LessonPlaylist({
                 onClick={() => onSelect(lesson)}
                 aria-current={active ? 'true' : undefined}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl p-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
-                  active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'
+                  'flex w-full items-center gap-3 rounded-xl p-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/35',
+                  active ? 'bg-foreground/[0.07]' : 'hover:bg-foreground/[0.04]'
                 )}
               >
                 <span className="grid w-5 shrink-0 place-items-center text-xs tabular-nums text-muted-foreground">
                   {active ? <NowPlaying /> : i + 1}
                 </span>
-                <LessonThumbnail video={lesson} className="aspect-video w-28 shrink-0 rounded-lg ring-1 ring-white/10">
+                <LessonThumbnail video={lesson} className="aspect-video w-28 shrink-0 rounded-lg ring-1 ring-foreground/10">
                   {lesson.duration ? (
                     <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 py-px text-[10px] font-semibold tabular-nums text-white">
                       {lessonLength(lesson.duration)}
                     </span>
                   ) : null}
                   {watched > 0 ? (
-                    <span className="absolute inset-x-0 bottom-0 h-[3px] bg-white/25">
+                    <span className="absolute inset-x-0 bottom-0 h-[3px] bg-foreground/25">
                       <span className="block h-full bg-primary" style={{ width: `${watched * 100}%` }} />
                     </span>
                   ) : null}
@@ -81,7 +81,7 @@ export function LessonPlaylist({
                     {lesson.title}
                   </span>
                   {done ? (
-                    <span className="mt-0.5 flex items-center gap-1 text-xs text-emerald-300">
+                    <span className="mt-0.5 flex items-center gap-1 text-xs text-success">
                       <CheckCircle2 className="h-3 w-3" /> Watched
                     </span>
                   ) : null}
@@ -92,7 +92,7 @@ export function LessonPlaylist({
         })}
       </ol>
       {hiddenCount > 0 ? (
-        <p className="border-t border-white/[0.06] px-4 py-2.5 text-xs text-muted-foreground">
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {pluralize(hiddenCount, 'lesson')} still processing or failed — students only see ready lessons.
         </p>
       ) : null}

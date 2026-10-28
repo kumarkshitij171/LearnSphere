@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronRight, Clock, Film, Layers, Lock, Share2, Sparkles } from 'lucide-react';
@@ -23,6 +23,7 @@ import { courseLength, lessonLength, pluralize } from '@/lib/format';
 import { formatPrice } from '@/lib/money';
 import { masterPlaylistUrl } from '@/lib/playback';
 import { loadProgress, recordProgress, resumePosition, type ProgressMap } from '@/lib/progress';
+import { recordActivity } from '@/lib/activity';
 import { cn } from '@/lib/utils';
 
 const THEATER_KEY = 'learnsphere.player.theater';
@@ -120,12 +121,20 @@ function CoursePage() {
     }
   };
 
+  // the previous report per lesson, so only time actually played counts towards the week's total
+  const lastReport = useRef<{ videoId: string; position: number } | null>(null);
   const onProgress = useCallback(
     (position: number, duration: number, ended: boolean) => {
       if (!user || !active) return;
-      setProgress(recordProgress(user.id, courseId, active.id, position, duration, ended));
+      const before = lastReport.current;
+      const step = before?.videoId === active.id ? position - before.position : 0;
+      lastReport.current = { videoId: active.id, position };
+      const wasDone = Boolean(progress[active.id]?.completed);
+      const next = recordProgress(user.id, courseId, active.id, position, duration, ended);
+      recordActivity(user.id, ended ? 0 : step, !wasDone && Boolean(next[active.id]?.completed));
+      setProgress(next);
     },
-    [user, active, courseId]
+    [user, active, courseId, progress]
   );
 
   const share = async () => {
@@ -146,13 +155,13 @@ function CoursePage() {
       <main className="min-h-screen bg-background">
         <div className="mx-auto grid max-w-[1600px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-8">
           <div className="space-y-4">
-            <Skeleton className="aspect-video w-full rounded-2xl" />
+            <Skeleton className="aspect-video w-full rounded-[14px]" />
             <Skeleton className="h-7 w-2/3" />
             <Skeleton className="h-4 w-1/3" />
           </div>
           <div className="space-y-4">
-            <Skeleton className="h-32 w-full rounded-2xl" />
-            <Skeleton className="h-80 w-full rounded-2xl" />
+            <Skeleton className="h-32 w-full rounded-[14px]" />
+            <Skeleton className="h-80 w-full rounded-[14px]" />
           </div>
         </div>
       </main>
@@ -201,10 +210,10 @@ function CoursePage() {
   ) : null;
 
   const lockedHero = (
-    <CourseCover id={course.id} title={course.title} size="lg" className="aspect-video w-full rounded-2xl ring-1 ring-white/10">
+    <CourseCover id={course.id} title={course.title} thumbnail={course.thumbnail} coverVideoId={course.coverVideoId ?? course.videos.find((v) => v.status === "READY")?.id ?? null} size="lg" className="aspect-video w-full rounded-[14px]">
       <div className="absolute inset-0 grid place-items-center bg-black/45">
         <div className="flex flex-col items-center gap-3 text-center">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-black/60 ring-1 ring-white/20 backdrop-blur">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-black/60 ring-1 ring-foreground/20">
             <Lock className="h-6 w-6" />
           </span>
           <p className="text-sm font-medium text-white/90">
@@ -224,12 +233,12 @@ function CoursePage() {
   const details = (
     <div className="space-y-6">
       <div className="space-y-3">
-        <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
           {active && course.canAccessVideos ? active.title : course.title}
         </h1>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-lime-300 to-emerald-400 text-sm font-bold text-[#0A0A0F]">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-foreground/[0.08] text-sm font-semibold text-foreground">
               {(course.instructor?.name || 'In').slice(0, 2).toUpperCase()}
             </span>
             <div className="leading-tight">
@@ -251,7 +260,7 @@ function CoursePage() {
         </div>
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-white/[0.08] bg-card/40 p-5">
+      <section className="space-y-3 rounded-[14px] border border-border bg-background p-5">
         <div className="flex flex-wrap gap-2">
           <Badge tone={course.canAccessVideos ? 'success' : 'primary'}>
             {course.canAccessVideos ? (canManage ? 'Your course' : 'Owned') : formatPrice(course.price, course.currency)}
@@ -276,16 +285,16 @@ function CoursePage() {
           {course.description}
         </p>
         {aboutLong ? (
-          <button type="button" onClick={() => setAboutOpen((o) => !o)} className="text-sm font-medium text-primary hover:underline">
+          <button type="button" onClick={() => setAboutOpen((o) => !o)} className="text-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground">
             {aboutOpen ? 'Show less' : 'Show more'}
           </button>
         ) : null}
       </section>
 
       {!course.canAccessVideos && curriculum.length ? (
-        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-card/40">
-          <h2 className="border-b border-white/[0.06] px-5 py-3.5 font-semibold">What you&apos;ll watch</h2>
-          <ol className="divide-y divide-white/[0.05]">
+        <section className="overflow-hidden rounded-[14px] border border-border bg-background">
+          <h2 className="border-b border-border px-5 py-3.5 font-semibold">What you&apos;ll watch</h2>
+          <ol className="divide-y divide-border">
             {curriculum.map((c, i) => (
               <li key={`${i}-${c.title}`} className="flex items-center gap-3 px-5 py-3 text-sm">
                 <span className="w-5 text-xs tabular-nums text-muted-foreground">{i + 1}</span>

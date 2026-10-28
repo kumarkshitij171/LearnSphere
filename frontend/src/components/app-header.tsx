@@ -24,7 +24,7 @@ export function AppHeader({ user }: { user: CurrentUser | null }) {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 glass">
+    <header className="sticky top-0 z-40 border-b border-border bg-background">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Logo href="/dashboard" />
         <div className="flex items-center gap-3">

@@ -116,7 +116,7 @@ export default function LoginPage() {
   if (checkingSession) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </main>
     );
   }
@@ -124,14 +124,14 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <h1 className="text-display-m">
           Welcome back
         </h1>
         <p className="text-muted-foreground">
           Don&apos;t have an account?{' '}
           <Link
             href="/signup"
-            className="font-medium text-primary transition-colors hover:underline"
+            className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground"
           >
             Create one for free
           </Link>
@@ -140,7 +140,7 @@ export default function LoginPage() {
 
       <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
         {apiError && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
+          <div className="flex items-start gap-2.5 rounded-[10px] bg-danger/10 px-3.5 py-3 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
             <div className="space-y-1.5">
               <span>{apiError}</span>
@@ -165,7 +165,7 @@ export default function LoginPage() {
           </div>
         )}
         {successMessage && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-sm text-emerald-400">
+          <div className="flex items-start gap-2.5 rounded-[10px] bg-success/10 px-3.5 py-3 text-sm text-success">
             <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none" />
             <span>{successMessage}</span>
           </div>
@@ -235,29 +235,10 @@ export default function LoginPage() {
           )}
         </div>
 
-        <div className="flex items-center justify-between">
-          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground">
-            <input
-              id="remember-me"
-              name="remember-me"
-              type="checkbox"
-              className="h-4 w-4 rounded border-white/20 bg-white/[0.03] text-primary accent-primary focus:ring-primary focus:ring-offset-0"
-            />
-            Remember me
-          </label>
-
-          <Link
-            href="/forgot-password"
-            className="text-sm font-medium text-primary transition-colors hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-
         <Button
           type="submit"
           disabled={isLoading}
-          className="group h-11 w-full text-base"
+          className="group h-11 w-full"
         >
           {isLoading ? (
             <>

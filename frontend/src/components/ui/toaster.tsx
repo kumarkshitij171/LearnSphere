@@ -1,27 +1,34 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Toaster as Sonner } from 'sonner';
 
 export { toast } from 'sonner';
 
-/** One toaster for the app, in its dark palette. */
+/** One toaster for the app, drawn from the same tokens as everything else. */
 export function Toaster() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const read = () => setDark(document.documentElement.getAttribute('data-look') === 'theater');
+    read();
+    window.addEventListener('ls-look', read);
+    return () => window.removeEventListener('ls-look', read);
+  }, []);
   return (
     <Sonner
-      theme="dark"
+      theme={dark ? 'dark' : 'light'}
       position="bottom-right"
       closeButton
       toastOptions={{
         classNames: {
-          toast:
-            'group !rounded-xl !border !border-white/10 !bg-[hsl(240_8%_9%)] !text-foreground !shadow-[0_16px_48px_-12px_rgba(0,0,0,0.8)]',
-          title: '!font-semibold',
+          toast: 'group !rounded-xl !border !border-border !bg-popover !text-popover-foreground !shadow-overlay !font-sans',
+          title: '!font-medium',
           description: '!text-muted-foreground',
-          actionButton: '!rounded-md !bg-primary !font-semibold !text-primary-foreground',
-          cancelButton: '!rounded-md !bg-white/10 !text-foreground',
-          closeButton: '!border-white/10 !bg-[hsl(240_8%_12%)] !text-muted-foreground hover:!text-foreground',
-          success: '[&_[data-icon]]:!text-emerald-300',
-          error: '[&_[data-icon]]:!text-red-300',
+          actionButton: '!rounded-full !bg-primary !font-medium !text-primary-foreground',
+          cancelButton: '!rounded-full !bg-surface !text-foreground',
+          closeButton: '!border-border !bg-popover !text-muted-foreground hover:!text-foreground',
+          success: '[&_[data-icon]]:!text-success',
+          error: '[&_[data-icon]]:!text-danger',
         },
       }}
     />

@@ -82,7 +82,7 @@ export function OrdersPanel() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Search by buyer email"
             aria-label="Search orders by buyer email"
-            className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            className="h-10 w-full rounded-xl border border-border bg-foreground/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           />
         </label>
         <select
@@ -92,7 +92,7 @@ export function OrdersPanel() {
             setStatus(e.target.value as OrderStatus | '');
           }}
           aria-label="Filter by status"
-          className="h-10 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+          className="h-10 rounded-xl border border-border bg-foreground/[0.03] px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
         >
           {FILTERS.map((f) => (
             <option key={f.value || 'all'} value={f.value} className="bg-background">
@@ -103,15 +103,15 @@ export function OrdersPanel() {
       </div>
 
       {orders === null ? (
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-[14px]" />
       ) : error ? (
         <EmptyState icon={<Receipt />} title="Orders are unavailable" description={error} action={<Button variant="outline" onClick={load}>Try again</Button>} />
       ) : orders.length === 0 ? (
         <EmptyState icon={<Receipt />} title={query || status ? 'No orders match' : 'No orders yet'} description={query ? `Nothing for “${query}”.` : undefined} />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-white/[0.08]">
+        <div className="overflow-hidden rounded-[14px] border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="bg-foreground/[0.03] text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 font-medium">Course</th>
                 <th className="hidden px-4 py-3 font-medium md:table-cell">Buyer</th>
@@ -120,9 +120,9 @@ export function OrdersPanel() {
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.05]">
+            <tbody className="divide-y divide-border">
               {orders.map((o) => (
-                <tr key={o.orderId} className="transition-colors hover:bg-white/[0.02]">
+                <tr key={o.orderId} className="transition-colors hover:bg-foreground/[0.02]">
                   <td className="max-w-[240px] px-4 py-3">
                     <Link href={`/courses/${o.courseId}`} className="block truncate font-medium hover:underline">
                       {o.courseTitle}

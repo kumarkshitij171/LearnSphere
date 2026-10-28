@@ -19,6 +19,7 @@ export type {
   LessonErrorCode,
   CreateCoursePayload,
   VideoStatus,
+  ThumbnailPresign,
 } from './courses.service';
 
 export { videosApi } from './videos.service';
@@ -55,3 +56,5 @@ export type {
 
 export { devicesApi } from './devices.service';
 export type { DevicePlatform } from './devices.service';
+export { inboxApi } from './inbox.service';
+export type { InboxItem, InboxPage } from './inbox.service';

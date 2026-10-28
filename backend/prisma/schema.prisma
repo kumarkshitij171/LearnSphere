@@ -1,4 +1,4 @@
-// npx prisma db push
+// Migrations: `npm run db:migrate -- --name <change>` locally, `npm run db:migrate:deploy` in CI/prod (DATABASE_DESIGN.md §8.2).
 
 generator client {
   provider = "prisma-client-js"
@@ -35,7 +35,7 @@ model Course {
   description  String
   price        Float        @default(0)
   currency     String       @default("INR")
-  thumbnail    String?
+  thumbnail    String? // S3 key in the asset bucket, set only through the upload endpoints
   isPublished  Boolean      @default(false)
   instructorId String
   instructor   User         @relation("CourseInstructor", fields: [instructorId], references: [id])
@@ -87,6 +87,7 @@ model Video {
   hlsMasterPath   String? // S3 key for HLS master playlist (e.g. processed-videos/videoId/master.m3u8)
   resolutions     Json? // Array of transcoded resolution metadata
   metadata        Json? // Video metadata (codec, etc.)
+  thumbnail       String? // S3 key of an instructor-uploaded thumbnail; null = the transcoder's poster
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   user            User               @relation(fields: [userId], references: [id])

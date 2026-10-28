@@ -10,7 +10,11 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "ui-config:export": "ts-node --transpile-only scripts/exportUiConfig.ts"
+    "ui-config:export": "ts-node --transpile-only scripts/exportUiConfig.ts",
+    "ui-config:publish-default": "ts-node --transpile-only scripts/publishUiConfigDefault.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status"
   },
   "keywords": [],
   "author": "",

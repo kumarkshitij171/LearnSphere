@@ -12,7 +12,7 @@ import org.springframework.web.filter.CorsFilter;
 import java.util.List;
 
 /**
- * Browsers call /api/v1/devices with the auth cookie. CORS runs before the tenant and auth filters
+ * Browsers call /api/v1/devices and the inbox with the auth cookie. CORS runs before the tenant and auth filters
  * so a 401 still carries CORS headers and the frontend can react to it.
  */
 @Configuration
@@ -29,6 +29,8 @@ public class CorsConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/v1/devices/**", config);
         source.registerCorsConfiguration("/api/v1/devices", config);
+        source.registerCorsConfiguration("/api/v1/notifications/inbox", config);
+        source.registerCorsConfiguration("/api/v1/notifications/inbox/**", config);
         FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registration;

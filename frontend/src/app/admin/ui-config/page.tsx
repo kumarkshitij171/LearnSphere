@@ -21,11 +21,11 @@ export default function UiConfigPage() {
 
   return (
     <>
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center text-muted-foreground md:hidden">
+      <div data-look="theater" className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center text-muted-foreground md:hidden">
         <MonitorSmartphone className="h-8 w-8" />
         <p>The configuration editor needs a wider screen. Open it on a laptop or desktop.</p>
       </div>
-      <div className="hidden md:block">
+      <div data-look="theater" className="hidden md:block">
         <ConfigWorkbench user={user} />
       </div>
     </>

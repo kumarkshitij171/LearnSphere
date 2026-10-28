@@ -5,6 +5,7 @@ import { CheckCircle2, Clapperboard, FileVideo, Loader2, UploadCloud } from 'luc
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toaster';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { getApiErrorMessage, type CourseVideo } from '@/lib/api';
@@ -13,8 +14,6 @@ import { lessonLength } from '@/lib/format';
 import { probeLocalVideo, replaceLessonFile, uploadLesson, uploadProblem, type LocalVideoInfo, type UploadProgress } from '@/lib/upload';
 import { cn } from '@/lib/utils';
 
-const TEXTAREA =
-  'flex w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm placeholder:text-muted-foreground/60 transition-colors hover:border-white/20 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30';
 
 function eta(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return '';
@@ -171,11 +170,11 @@ export function AddLessonDialog({
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
               className={cn(
-                'group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-12 text-center outline-none transition-colors',
-                dragging ? 'border-primary bg-primary/[0.06]' : 'border-white/10 hover:border-white/25 hover:bg-white/[0.02] focus-visible:border-primary/60'
+                'group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[14px] border-2 border-dashed px-6 py-12 text-center outline-none transition-colors',
+                dragging ? 'border-primary bg-surface' : 'border-border hover:border-foreground/25 hover:bg-foreground/[0.02] focus-visible:border-primary/60'
               )}
             >
-              <span className={cn('grid h-14 w-14 place-items-center rounded-2xl ring-1 transition-colors', dragging ? 'bg-primary/15 text-primary ring-primary/30' : 'bg-white/[0.04] text-muted-foreground ring-white/10 group-hover:text-foreground')}>
+              <span className={cn('grid h-14 w-14 place-items-center rounded-[14px] ring-1 transition-colors', dragging ? 'bg-foreground/[0.08] text-primary ring-primary/30' : 'bg-foreground/[0.04] text-muted-foreground ring-foreground/10 group-hover:text-foreground')}>
                 <UploadCloud className="h-6 w-6" />
               </span>
               <div>
@@ -190,8 +189,8 @@ export function AddLessonDialog({
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-              <div className="relative grid aspect-video w-36 shrink-0 place-items-center overflow-hidden rounded-xl bg-black/60 ring-1 ring-white/10">
+            <div className="flex items-center gap-4 rounded-[14px] border border-border bg-foreground/[0.02] p-3">
+              <div className="relative grid aspect-video w-36 shrink-0 place-items-center overflow-hidden rounded-xl bg-black/60 ring-1 ring-foreground/10">
                 {info?.poster ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={info.poster} alt="" className="h-full w-full object-cover" />
@@ -251,21 +250,20 @@ export function AddLessonDialog({
                 <span className="flex items-center justify-between text-sm font-medium">
                   Description <span className="text-xs font-normal text-muted-foreground">optional</span>
                 </span>
-                <textarea
+                <Textarea
                   value={description}
                   maxLength={5000}
                   rows={3}
                   disabled={busy}
                   placeholder="What will students learn in this lesson?"
                   onChange={(e) => setDescription(e.target.value)}
-                  className={TEXTAREA}
                 />
               </label>
             </div>
           ) : null}
 
           {progress ? (
-            <div className="space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+            <div className="space-y-2 rounded-xl border border-border bg-foreground/[0.02] p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 font-medium">
                   {phase === 'finishing' ? (
@@ -284,16 +282,16 @@ export function AddLessonDialog({
                     : ''}
                 </span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-1.5 overflow-hidden rounded-full bg-foreground/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-lime-300 to-emerald-400 transition-[width] duration-300"
+                  className="h-full rounded-full bg-highlight transition-[width] duration-300"
                   style={{ width: `${phase === 'finishing' ? 100 : progress.percent}%` }}
                 />
               </div>
             </div>
           ) : null}
 
-          {problem ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/20">{problem}</p> : null}
+          {problem ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger ring-1 ring-danger/20">{problem}</p> : null}
         </DialogBody>
 
         <DialogFooter>

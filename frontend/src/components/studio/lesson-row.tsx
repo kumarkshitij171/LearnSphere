@@ -43,20 +43,20 @@ export function LessonRow({ video, index, actions }: { video: CourseVideo; index
   return (
     <div
       className={cn(
-        'group flex items-center gap-4 rounded-2xl border p-3 transition-colors',
-        failed ? 'border-red-500/25 bg-red-500/[0.04]' : 'border-white/[0.08] bg-card/40 hover:border-white/15 hover:bg-white/[0.025]'
+        'group flex items-center gap-4 rounded-[14px] border p-3 transition-colors',
+        failed ? 'border-danger/25 bg-danger/[0.04]' : 'border-border bg-background hover:border-foreground/15 hover:bg-foreground/[0.025]'
       )}
     >
       <span className="w-6 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{index + 1}</span>
 
-      <LessonThumbnail video={video} className="aspect-video w-28 shrink-0 rounded-xl ring-1 ring-white/10 sm:w-36">
+      <LessonThumbnail video={video} className="aspect-video w-28 shrink-0 rounded-xl ring-1 ring-foreground/10 sm:w-36">
         {ready ? (
           <Link
             href={actions.previewHref(video)}
             aria-label={`Preview ${video.title}`}
             className="absolute inset-0 grid place-items-center bg-black/0 transition-colors group-hover:bg-black/35"
           >
-            <span className="grid h-9 w-9 scale-90 place-items-center rounded-full bg-black/60 text-white opacity-0 ring-1 ring-white/20 backdrop-blur transition group-hover:scale-100 group-hover:opacity-100">
+            <span className="grid h-9 w-9 scale-90 place-items-center rounded-full bg-black/60 text-white opacity-0 ring-1 ring-foreground/20 transition group-hover:scale-100 group-hover:opacity-100">
               <Play className="ml-0.5 h-4 w-4 fill-current" />
             </span>
           </Link>
@@ -67,8 +67,8 @@ export function LessonRow({ video, index, actions }: { video: CourseVideo; index
           </div>
         ) : null}
         {failed ? (
-          <div className="absolute inset-0 grid place-items-center bg-red-950/50">
-            <AlertTriangle className="h-5 w-5 text-red-300" />
+          <div className="absolute inset-0 grid place-items-center bg-danger/50">
+            <AlertTriangle className="h-5 w-5 text-danger" />
           </div>
         ) : null}
         {length ? (
@@ -79,14 +79,14 @@ export function LessonRow({ video, index, actions }: { video: CourseVideo; index
       <div className="min-w-0 flex-1 space-y-1">
         <p className="truncate font-medium">{video.title}</p>
         {failed && failure ? (
-          <p className="line-clamp-2 text-sm text-red-300/90">{failure.message}</p>
+          <p className="line-clamp-2 text-sm text-danger/90">{failure.message}</p>
         ) : processing ? (
           <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground">
               {video.status === 'UPLOADED' ? 'Queued for processing…' : 'Processing — this usually takes a few minutes'}
             </p>
-            <div className="h-1 w-40 overflow-hidden rounded-full bg-white/10">
-              <div className="ui-indeterminate h-full w-1/3 rounded-full bg-primary/70" />
+            <div className="h-1 w-40 overflow-hidden rounded-full bg-foreground/10">
+              <div className="ui-indeterminate h-full w-1/3 rounded-full bg-foreground/70" />
             </div>
           </div>
         ) : (

@@ -38,6 +38,8 @@ export function recordProgress(
   const all = loadProgress(userId);
   if (!Number.isFinite(duration) || duration <= 0) return all;
   const previous = all[videoId];
+  // opening a lesson reports position 0; that is a visit, not watching, so it leaves no trace
+  if (!previous && !ended && position < 1) return all;
   const completed = Boolean(previous?.completed) || ended || position / duration >= COMPLETE_AT;
   all[videoId] = {
     // a finished lesson restarts from the top next time

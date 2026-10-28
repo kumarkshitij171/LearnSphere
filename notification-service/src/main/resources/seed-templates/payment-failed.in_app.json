@@ -1,0 +1,7 @@
+{
+  "name": "payment-failed",
+  "channel": "IN_APP",
+  "subject": "Payment didn't go through",
+  "templateVariables": { "courseTitle": null, "amount": null, "name": "there", "orderId": null, "reason": "The payment was declined" },
+  "templateMessage": "{{courseTitle}}: {{reason}}. No money was taken — tap to try again."
+}

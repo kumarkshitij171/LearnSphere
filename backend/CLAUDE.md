@@ -19,8 +19,8 @@ npm run test:coverage
 There is **no build or start script** — `dev` is the entrypoint. `start` exists
 in `package.json` but is an empty string; don't call it.
 
-Prisma: `npx prisma db push` to sync the schema (not `migrate`, see the comment
-atop `prisma/schema.prisma`), then `npx prisma generate` after any model edit.
+Prisma: `prisma migrate` (baseline `0_init`, 28 Oct 2026): `npm run db:migrate -- --name <change>` creates a migration locally; `npm run db:migrate:deploy` applies them in CI and production; `npm run db:migrate:status` checks. Every schema change ships as a migration file, additive first (nullable column,
+backfill, then enforce — DATABASE_DESIGN.md §8.2). `npx prisma generate` after any model edit.
 
 ## Layering
 

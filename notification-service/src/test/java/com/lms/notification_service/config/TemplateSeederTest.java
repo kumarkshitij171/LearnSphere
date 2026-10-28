@@ -1,7 +1,10 @@
 package com.lms.notification_service.config;
 
+import com.lms.notification_service.models.domain.ChannelType;
+import com.lms.notification_service.models.domain.RenderedContent;
 import com.lms.notification_service.models.entity.Template;
 import com.lms.notification_service.repository.TemplateRepository;
+import com.lms.notification_service.service.TemplateService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -34,12 +37,53 @@ class TemplateSeederTest {
         ArgumentCaptor<Template> saved = ArgumentCaptor.forClass(Template.class);
         verify(repository, atLeastOnce()).save(saved.capture());
         List<String> names = saved.getAllValues().stream().map(t -> t.getName() + "/" + t.getChannel()).toList();
-        assertThat(names).contains("order-receipt/EMAIL", "payment-failed/EMAIL", "refund-processed/EMAIL");
+        assertThat(names).contains("order-receipt/EMAIL", "payment-failed/EMAIL", "refund-processed/EMAIL",
+                "order-receipt/IN_APP", "payment-failed/IN_APP", "refund-processed/IN_APP",
+                "announcement/IN_APP", "announcement/PUSH");
         assertThat(saved.getAllValues()).allSatisfy(t -> {
             assertThat(t.getTenantId()).isEqualTo("learnsphere");
             assertThat(t.isActive()).isTrue();
             assertThat(t.getCreatedAt()).isPositive();
         });
+    }
+
+    @Test
+    void theInboxCopyOfEachPushTemplateSaysTheSameThing() throws Exception {
+        when(repository.findByTenantIdAndNameAndChannel(anyString(), anyString(), any())).thenReturn(Optional.empty());
+        seeder.run(null);
+        ArgumentCaptor<Template> saved = ArgumentCaptor.forClass(Template.class);
+        verify(repository, atLeastOnce()).save(saved.capture());
+        java.util.Map<String, Template> byKey = new java.util.HashMap<>();
+        saved.getAllValues().forEach(t -> byKey.put(t.getName() + "/" + t.getChannel(), t));
+        for (String name : List.of("order-receipt", "payment-failed", "refund-processed", "announcement")) {
+            Template push = byKey.get(name + "/PUSH");
+            Template inbox = byKey.get(name + "/IN_APP");
+            assertThat(inbox).as(name + "/IN_APP").isNotNull();
+            assertThat(inbox.getSubject()).isEqualTo(push.getSubject());
+            assertThat(inbox.getTemplateMessage()).isEqualTo(push.getTemplateMessage());
+            assertThat(inbox.getTemplateVariables()).isEqualTo(push.getTemplateVariables());
+        }
+    }
+
+    @Test
+    void anAnnouncementRendersWithOrWithoutItsVariables() throws Exception {
+        when(repository.findByTenantIdAndNameAndChannel(anyString(), anyString(), any())).thenReturn(Optional.empty());
+        seeder.run(null);
+        ArgumentCaptor<Template> saved = ArgumentCaptor.forClass(Template.class);
+        verify(repository, atLeastOnce()).save(saved.capture());
+        Template announcement = saved.getAllValues().stream()
+                .filter(t -> t.getName().equals("announcement") && t.getChannel() == ChannelType.IN_APP).findFirst().orElseThrow();
+        TemplateService renderer = new TemplateService(repository);
+
+        RenderedContent full = renderer.render(announcement, java.util.Map.of("title", "Maintenance tonight",
+                "message", "Playback is down 02:00–02:30 IST.", "link", "/explore"));
+        assertThat(full.subject()).isEqualTo("Maintenance tonight");
+        assertThat(full.body()).isEqualTo("Playback is down 02:00–02:30 IST.");
+
+        RenderedContent bare = renderer.render(announcement, null);
+        assertThat(bare.subject()).isEqualTo("LearnSphere");
+        assertThat(bare.body()).isEmpty();
+        assertThat(announcement.getTemplateVariables()).containsKey("link").containsEntry("link", null);
     }
 
     @Test

@@ -16,6 +16,7 @@ import java.util.Map;
 @Data
 @Document(collection = "notifications")
 @CompoundIndex(name = "notification_channel_idx", def = "{'notificationId': 1, 'channel': 1}", unique = true)
+@CompoundIndex(name = "inbox_idx", def = "{'tenantId': 1, 'userId': 1, 'channel': 1, 'createdAt': -1}")
 @EqualsAndHashCode(callSuper = true)
 public class Notification extends AbstractEntity {
     @Id
@@ -36,6 +37,11 @@ public class Notification extends AbstractEntity {
     private String providerMessageId;
     private ErrorType errorType;
     private String errorMessage;
+    // IN_APP only: the row is the inbox entry, so it keeps what the user reads
+    private String title;
+    private String body;
+    private String link;
+    private Long readAt;
 
     public void markSent(SendResult result) {
         setStatus(NotificationStatus.SENT);

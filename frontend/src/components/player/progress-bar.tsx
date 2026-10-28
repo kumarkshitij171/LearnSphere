@@ -94,12 +94,12 @@ export function ProgressBar({ currentTime, duration, bufferedEnd, onSeek, onScru
         {hoverX !== null && dragTime === null ? (
           <div className="absolute inset-y-0 left-0 bg-white/30" style={{ width: `${(hoverX / (width || 1)) * 100}%` }} />
         ) : null}
-        <div className="absolute inset-y-0 left-0 bg-primary" style={{ width: `${pct(shown, duration)}%` }} />
+        <div className="absolute inset-y-0 left-0 bg-highlight" style={{ width: `${pct(shown, duration)}%` }} />
       </div>
 
       <div
         className={cn(
-          'pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.25)] transition-transform duration-150',
+          'pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-highlight shadow-[0_0_0_4px_hsl(var(--highlight)/0.25)] transition-transform duration-150',
           active ? 'scale-100' : 'scale-0 group-focus-visible/bar:scale-100'
         )}
         style={{ left: `${pct(shown, duration)}%` }}

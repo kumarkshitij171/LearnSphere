@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { apiClient } from './client';
 import { endpoints } from './endpoints';
-import type { CourseVideo } from './courses.service';
+import type { CourseVideo, ThumbnailPresign } from './courses.service';
 
 export interface PresignResponse {
   uploadUrl: string;
@@ -71,6 +71,20 @@ export const videosApi = {
   async confirmReplacement(id: string, file: { mimeType: string; fileName?: string; fileSize?: number }): Promise<CourseVideo> {
     const { data } = await apiClient.post(endpoints.videos.replace(id), file);
     return data.video;
+  },
+
+  async presignThumbnail(id: string, contentType: string): Promise<ThumbnailPresign> {
+    const { data } = await apiClient.post(endpoints.videos.thumbnailPresign(id), { contentType });
+    return { uploadUrl: data.uploadUrl, key: data.key };
+  },
+
+  async setThumbnail(id: string, key: string): Promise<string> {
+    const { data } = await apiClient.put(endpoints.videos.thumbnail(id), { key });
+    return data.thumbnail;
+  },
+
+  removeThumbnail(id: string) {
+    return apiClient.delete(endpoints.videos.thumbnail(id));
   },
 
   /** Transcode a failed lesson again from its original upload. */

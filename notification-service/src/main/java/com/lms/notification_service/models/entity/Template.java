@@ -20,7 +20,7 @@ public class Template extends AbstractEntity {
     private ChannelType channel;
     // declared placeholders and their fallback values; a null value means the caller must supply it
     private Map<String, String> templateVariables;
-    // rendered for EMAIL subject / PUSH title; unused by SMS
+    // rendered for EMAIL subject / PUSH and IN_APP title; unused by SMS
     private String subject;
     private String templateMessage;
     private String tenantId;

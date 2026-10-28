@@ -1,0 +1,7 @@
+{
+  "name": "announcement",
+  "channel": "PUSH",
+  "subject": "{{title}}",
+  "templateVariables": { "title": "LearnSphere", "message": "", "link": null },
+  "templateMessage": "{{message}}"
+}

@@ -47,7 +47,7 @@ export default function StudioPage() {
         {courses === null ? (
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-24 rounded-2xl" />
+              <Skeleton key={i} className="h-24 rounded-[14px]" />
             ))}
           </div>
         ) : courses.length ? (

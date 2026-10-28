@@ -86,3 +86,42 @@ export async function disablePush(): Promise<void> {
     // ignore
   }
 }
+
+export interface ForegroundPush {
+  title: string;
+  body: string;
+  /** where the notification points, from the FCM `data.link` the notification-service sets */
+  link: string | null;
+}
+
+/**
+ * While a LearnSphere tab is open and focused, FCM delivers to the page instead of showing a system
+ * notification, so the page must show it. Returns an unsubscribe; a no-op when push is not on.
+ */
+export async function listenForegroundPush(onPush: (push: ForegroundPush) => void): Promise<() => void> {
+  const cfg = config();
+  if (!cfg || pushState() !== 'on') return () => {};
+  const [{ initializeApp, getApps }, { getMessaging, onMessage }] = await Promise.all([
+    import('firebase/app'),
+    import('firebase/messaging'),
+  ]);
+  const { vapidKey: _unused, ...firebaseConfig } = cfg;
+  return onMessage(getMessaging(getApps()[0] ?? initializeApp(firebaseConfig)), (payload) => {
+    onPush({
+      title: payload.notification?.title ?? payload.data?.title ?? 'LearnSphere',
+      body: payload.notification?.body ?? payload.data?.body ?? '',
+      link: payload.data?.link ?? payload.fcmOptions?.link ?? null,
+    });
+  });
+}
+
+/** An absolute link into this app becomes a path, so the router can open it without a reload. */
+export function inAppPath(link: string | null): string | null {
+  if (!link) return null;
+  try {
+    const url = new URL(link, window.location.origin);
+    return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : null;
+  } catch {
+    return null;
+  }
+}

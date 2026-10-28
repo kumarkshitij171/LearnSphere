@@ -1,60 +1,72 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Compass, GraduationCap, Loader2, Play, Plus } from 'lucide-react';
+import { ArrowRight, Compass, GraduationCap, Loader2, Plus } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { CourseCard, CourseGrid } from '@/components/course-card';
-import { LessonThumbnail } from '@/components/lesson-thumbnail';
-import { formatTime } from '@/components/player/time';
+import { ContinuePanel } from '@/components/dashboard/continue-panel';
+import { CourseRows, type LearningRow } from '@/components/dashboard/course-rows';
+import { StudioRows } from '@/components/dashboard/studio-rows';
+import { WeekPanel } from '@/components/dashboard/week-panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TwoTone } from '@/components/ui/two-tone';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { useUiConfig } from '@/lib/ui-config';
 import {
   coursesApi,
   getApiErrorMessage,
   instructorApi,
-  type CourseDetail,
   type CourseSummary,
-  type CourseVideo,
   type CurrentUser,
   type InstructorRequest,
 } from '@/lib/api';
-import { lastUnfinished, loadProgress, type LessonProgress, type ProgressMap } from '@/lib/progress';
+import { lastUnfinished, loadProgress, resumePosition, type ProgressMap } from '@/lib/progress';
 
 function greeting(date = new Date()): string {
   const h = date.getHours();
   return h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
-function SectionHeader({ title, href, linkLabel }: { title: string; href?: string; linkLabel?: string }) {
+const NUMBER_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+const countWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
+
+function SectionHeader({ title, href, linkLabel, action }: { title: string; href?: string; linkLabel?: string; action?: React.ReactNode }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      {href ? (
-        <Link href={href} className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
-          {linkLabel ?? 'See all'} <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      ) : null}
+    <div className="mb-3 flex items-end justify-between gap-3">
+      <h2 className="text-heading">{title}</h2>
+      {action ??
+        (href ? (
+          <Link href={href} className="inline-flex items-center gap-1 text-[13px] font-medium text-body transition-colors hover:text-foreground">
+            {linkLabel ?? 'See all'} <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        ) : null)}
     </div>
   );
 }
 
-function courseProgress(course: CourseSummary, progress: ProgressMap): number {
-  const total = course._count?.videos ?? 0;
-  if (!total) return 0;
-  const done = Object.values(progress).filter((p) => p.courseId === course.id && p.completed).length;
-  return Math.min(1, done / total);
+/** Per enrolled course: lessons watched out of ready lessons, when it was last watched, where to land. */
+function learningRows(enrolled: CourseSummary[], progress: ProgressMap): LearningRow[] {
+  return enrolled.map((course) => {
+    const entries = Object.entries(progress).filter(([, p]) => p.courseId === course.id);
+    const total = course._count?.videos ?? 0;
+    const done = Math.min(total, entries.filter(([, p]) => p.completed).length);
+    const lastWatched = entries.length ? Math.max(...entries.map(([, p]) => p.updatedAt)) : null;
+    const resume = entries
+      .filter(([, p]) => !p.completed && resumePosition(p) !== null)
+      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)[0];
+    return { course, done, total, lastWatched, resumeLessonId: resume?.[0] ?? null };
+  });
 }
 
-export default function HomePage() {
+export default function DashboardPage() {
   const { user, checking } = useRequireAuth();
   if (checking || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </main>
     );
   }
@@ -71,6 +83,7 @@ function Home({ user }: { user: CurrentUser }) {
   const [enrolled, setEnrolled] = useState<CourseSummary[] | null>(null);
   const [mine, setMine] = useState<CourseSummary[] | null>(null);
   const [progress, setProgress] = useState<ProgressMap>({});
+  const [showCompleted, setShowCompleted] = useState(false);
   const teaches = user.role === 'INSTRUCTOR' || user.role === 'ADMIN';
 
   useEffect(() => {
@@ -81,83 +94,111 @@ function Home({ user }: { user: CurrentUser }) {
   }, [user.id, teaches]);
 
   const firstName = (user.name?.trim().split(/\s+/)[0] || 'there').replace(/^./, (c) => c.toUpperCase());
+  const rows = useMemo(() => learningRows(enrolled ?? [], progress), [enrolled, progress]);
+  const inProgress = rows
+    .filter((r) => !(r.total > 0 && r.done >= r.total))
+    .sort((a, b) => (b.lastWatched ?? 0) - (a.lastWatched ?? 0));
+  const completed = rows.filter((r) => r.total > 0 && r.done >= r.total);
   const owned = new Set((enrolled ?? []).map((c) => c.id));
   const fresh = (catalogue ?? []).filter((c) => !owned.has(c.id) && c.instructorId !== user.id).slice(0, 4);
   const resume = lastUnfinished(progress);
 
-  return (
-    <div className="mx-auto max-w-[1400px] space-y-10 px-4 py-8 sm:px-6 lg:px-8">
-      <header className="space-y-1">
-        <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-          {greeting()}, <span className="text-gradient">{firstName}</span>
-        </h1>
-        <p className="text-muted-foreground">
-          {resume ? 'Pick up where you left off.' : enrolled?.length ? 'Ready for your next lesson?' : 'Find something new to learn today.'}
-        </p>
-      </header>
+  const trail =
+    enrolled === null
+      ? ' '
+      : inProgress.length
+        ? `${countWord(inProgress.length)} ${inProgress.length === 1 ? 'course' : 'courses'} in progress${resume ? ', one lesson half watched.' : '.'}`
+        : resume
+          ? 'Pick up where you left off.'
+          : completed.length
+          ? 'Everything you started is finished.'
+          : 'Find something to learn today.';
 
-      {resume ? <ContinueWatching videoId={resume.videoId} entry={resume.entry} /> : null}
+  return (
+    <div className="mx-auto max-w-[1200px] space-y-10 px-4 pb-16 pt-8 sm:px-6 lg:px-9">
+      <TwoTone as="h1" lead={`${greeting()}, ${firstName}.`} trail={trail} breakLine className="text-display-m" />
+
+      {features.studyProgress && resume ? (
+        <div className="grid gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <ContinuePanel videoId={resume.videoId} entry={resume.entry} />
+          <WeekPanel userId={user.id} />
+        </div>
+      ) : features.studyProgress ? (
+        <WeekPanel userId={user.id} hideWhenEmpty className="lg:max-w-md" />
+      ) : resume ? (
+        <ContinuePanel videoId={resume.videoId} entry={resume.entry} />
+      ) : null}
 
       <section>
-        <SectionHeader title="My learning" href={enrolled?.length ? '/explore' : undefined} linkLabel="Find more courses" />
+        <SectionHeader title="In progress" href={enrolled?.length ? '/explore' : undefined} linkLabel="Find more courses" />
         {enrolled === null ? (
-          <CourseGrid>
+          <div className="space-y-2">
             {Array.from({ length: 3 }, (_, i) => (
-              <Skeleton key={i} className="aspect-[4/3] w-full rounded-2xl" />
+              <Skeleton key={i} className="h-[76px] w-full rounded-[14px]" />
             ))}
-          </CourseGrid>
-        ) : enrolled.length ? (
-          <CourseGrid>
-            {enrolled.map((c) => (
-              <CourseCard key={c.id} course={c} href={`/courses/${c.id}`} variant="learning" progress={courseProgress(c, progress)} />
-            ))}
-          </CourseGrid>
+          </div>
+        ) : inProgress.length ? (
+          <CourseRows rows={inProgress} />
         ) : (
           <EmptyState
             icon={<Compass />}
-            title="You haven't started a course yet"
-            description="Browse the catalogue and pick something you want to get better at."
+            title={completed.length ? 'Nothing in progress' : "You haven't started a course yet"}
+            description={completed.length ? 'Pick your next course from the catalogue.' : 'Browse the catalogue and pick something you want to get better at.'}
             action={
-              <Button asChild className="gap-2">
-                <Link href="/explore">
-                  <Compass className="h-4 w-4" /> Explore courses
-                </Link>
+              <Button asChild>
+                <Link href="/explore">Explore courses</Link>
               </Button>
             }
           />
         )}
+        {completed.length ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowCompleted((s) => !s)}
+              className="rounded-md text-[13px] font-medium text-body transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+              aria-expanded={showCompleted}
+            >
+              {showCompleted ? 'Hide' : 'Show'} completed ({completed.length})
+            </button>
+            {showCompleted ? (
+              <div className="mt-3">
+                <CourseRows rows={completed} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {teaches ? (
         <section>
-          <SectionHeader title="Your studio" href="/studio" linkLabel="Open studio" />
+          <SectionHeader
+            title="Your studio"
+            action={
+              <div className="flex items-center gap-2">
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/studio">Open studio</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/courses/new">
+                    <Plus className="h-3.5 w-3.5" /> Create course
+                  </Link>
+                </Button>
+              </div>
+            }
+          />
           {mine === null ? (
-            <Skeleton className="h-40 w-full rounded-2xl" />
+            <Skeleton className="h-[160px] w-full rounded-[14px]" />
           ) : mine.length ? (
-            <CourseGrid>
-              {mine.slice(0, 3).map((c) => (
-                <CourseCard key={c.id} course={c} href={`/courses/${c.id}/manage`} variant="studio" />
-              ))}
-              <Link
-                href="/courses/new"
-                className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/15 text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/[0.03] hover:text-foreground"
-              >
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-white/[0.05] ring-1 ring-white/10">
-                  <Plus className="h-5 w-5" />
-                </span>
-                <span className="text-sm font-medium">Create a course</span>
-              </Link>
-            </CourseGrid>
+            <StudioRows courses={mine.slice(0, 5)} />
           ) : (
             <EmptyState
               icon={<GraduationCap />}
               title="Create your first course"
               description="Give it a title and a price, then add lessons."
               action={
-                <Button asChild className="gap-2">
-                  <Link href="/courses/new">
-                    <Plus className="h-4 w-4" /> Create course
-                  </Link>
+                <Button asChild>
+                  <Link href="/courses/new">Create course</Link>
                 </Button>
               }
             />
@@ -170,7 +211,11 @@ function Home({ user }: { user: CurrentUser }) {
       <section>
         <SectionHeader title="New on LearnSphere" href="/explore" linkLabel="Explore all" />
         {catalogue === null ? (
-          <Skeleton className="h-40 w-full rounded-2xl" />
+          <CourseGrid>
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="aspect-video w-full rounded-[12px]" />
+            ))}
+          </CourseGrid>
         ) : fresh.length ? (
           <CourseGrid>
             {fresh.map((c) => (
@@ -178,49 +223,10 @@ function Home({ user }: { user: CurrentUser }) {
             ))}
           </CourseGrid>
         ) : (
-          <p className="text-sm text-muted-foreground">{catalogue.length ? "You've got everything in the catalogue — nice." : copy.emptyCatalogue}</p>
+          <p className="text-sm text-muted-foreground">{catalogue.length ? 'You have every course in the catalogue.' : copy.emptyCatalogue}</p>
         )}
       </section>
     </div>
-  );
-}
-
-function ContinueWatching({ videoId, entry }: { videoId: string; entry: LessonProgress }) {
-  const [course, setCourse] = useState<CourseDetail | null>(null);
-  useEffect(() => {
-    coursesApi.getById(entry.courseId).then(setCourse).catch(() => setCourse(null));
-  }, [entry.courseId]);
-  const lesson: CourseVideo | undefined = course?.videos.find((v) => v.id === videoId && v.status === 'READY');
-  if (!course || !lesson) return null;
-  const index = course.videos.filter((v) => v.status === 'READY').findIndex((v) => v.id === lesson.id);
-  const fraction = entry.duration ? entry.position / entry.duration : 0;
-
-  return (
-    <Link
-      href={`/courses/${course.id}?lesson=${lesson.id}`}
-      className="group flex flex-col gap-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-primary/[0.07] via-card/60 to-card/40 p-4 outline-none transition hover:border-white/20 focus-visible:ring-2 focus-visible:ring-primary sm:flex-row sm:items-center sm:p-5"
-    >
-      <LessonThumbnail video={lesson} className="aspect-video w-full shrink-0 rounded-2xl ring-1 ring-white/10 sm:w-80">
-        <span className="absolute inset-0 grid place-items-center bg-black/20 transition-colors group-hover:bg-black/35">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-black/60 text-white ring-1 ring-white/20 backdrop-blur transition group-hover:scale-105">
-            <Play className="ml-0.5 h-6 w-6 fill-current" />
-          </span>
-        </span>
-        <span className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
-          <span className="block h-full bg-primary" style={{ width: `${Math.round(fraction * 100)}%` }} />
-        </span>
-      </LessonThumbnail>
-      <div className="min-w-0 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Continue watching</p>
-        <h2 className="line-clamp-2 font-display text-xl font-bold tracking-tight sm:text-2xl">{lesson.title}</h2>
-        <p className="truncate text-sm text-muted-foreground">
-          {course.title} · Lesson {index + 1}
-        </p>
-        <span className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.55)]">
-          <Play className="h-4 w-4 fill-current" /> Resume at {formatTime(entry.position)}
-        </span>
-      </div>
-    </Link>
   );
 }
 
@@ -251,32 +257,26 @@ function BecomeInstructor() {
   const pending = request?.status === 'PENDING';
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-card/40 p-6 sm:p-8">
-      <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-          <GraduationCap className="h-6 w-6" />
-        </span>
-        <div className="flex-1 space-y-1">
-          <h2 className="text-lg font-semibold">Teach on LearnSphere</h2>
-          <p className="text-sm text-muted-foreground">
-            {pending
-              ? "Your request is with our team. We'll let you know as soon as it's reviewed."
-              : request?.status === 'REJECTED'
-                ? 'Your previous request was declined. You can apply again.'
-                : 'Share what you know — create courses, upload lessons, and earn from every sale.'}
-          </p>
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
-        </div>
-        {pending ? (
-          <span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-sm font-medium text-amber-200 ring-1 ring-amber-400/20">Under review</span>
-        ) : (
-          <Button onClick={submit} disabled={submitting} className="gap-2">
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Become an instructor
-          </Button>
-        )}
+    <section className="flex flex-col gap-4 rounded-[14px] border border-border p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-heading">Teach on LearnSphere</h2>
+        <p className="max-w-prose text-sm text-body">
+          {pending
+            ? "Your request is with our team. We'll let you know as soon as it's reviewed."
+            : request?.status === 'REJECTED'
+              ? 'Your previous request was declined. You can apply again.'
+              : 'Create courses, upload lessons and sell them here.'}
+        </p>
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
       </div>
+      {pending ? (
+        <span className="shrink-0 rounded-md bg-warning/10 px-2 py-1 text-[13px] font-medium text-warning">Under review</span>
+      ) : (
+        <Button onClick={submit} disabled={submitting} variant="outline" className="shrink-0">
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Request instructor access
+        </Button>
+      )}
     </section>
   );
 }

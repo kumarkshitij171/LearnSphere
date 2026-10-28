@@ -12,7 +12,16 @@ import {
   isEnrolled,
   listEnrolledCourses,
   countReadyVideos,
+  findCourseThumbnail,
 } from '../services/course.service';
+import {
+  THUMBNAIL_REDIRECT_HEADERS,
+  isThumbnailKeyFor,
+  presignThumbnailDownload,
+  presignThumbnailUpload,
+  removeThumbnail,
+  verifyThumbnailUpload,
+} from '../services/asset.service';
 
 export const createCourse = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
   const course = await createCourseService(req.user!.id, req.body);
@@ -98,4 +107,39 @@ export const grantEnrollment = catchAsyncError(async (req: Request, res: Respons
   const result = await enrollInCourse(userId, req.params.courseId, { source });
   if (!result.ok) return next(new ErrorHandler(404, 'Course not found'));
   return res.status(200).json({ success: true, enrollment: result.enrollment });
+});
+
+// Public, so an <img> can load it without credentials: 302 to a short-lived signed URL.
+export const getCourseThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const course = await findCourseThumbnail(req.params.courseId);
+  if (!course || !isThumbnailKeyFor('course', course.id, course.thumbnail)) {
+    return next(new ErrorHandler(404, 'This course has no thumbnail'));
+  }
+  res.set(THUMBNAIL_REDIRECT_HEADERS);
+  return res.redirect(302, await presignThumbnailDownload(course.thumbnail));
+});
+
+export const presignCourseThumbnail = catchAsyncError(async (req: Request, res: Response) => {
+  const { uploadUrl, key } = await presignThumbnailUpload('course', req.course!.id, req.body.contentType);
+  return res.status(200).json({ success: true, uploadUrl, key });
+});
+
+export const confirmCourseThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const course = req.course!;
+  const { key } = req.body;
+  const problem = await verifyThumbnailUpload('course', course.id, key);
+  if (problem) return next(new ErrorHandler(400, problem));
+
+  await updateCourseService(course.id, { thumbnail: key });
+  if (course.thumbnail !== key) await removeThumbnail('course', course.id, course.thumbnail);
+  return res.status(200).json({ success: true, thumbnail: key });
+});
+
+export const deleteCourseThumbnail = catchAsyncError(async (req: Request, res: Response) => {
+  const course = req.course!;
+  if (course.thumbnail) {
+    await updateCourseService(course.id, { thumbnail: null });
+    await removeThumbnail('course', course.id, course.thumbnail);
+  }
+  return res.status(200).json({ success: true });
 });

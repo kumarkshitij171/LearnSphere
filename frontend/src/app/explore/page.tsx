@@ -57,7 +57,7 @@ function ExplorePage() {
 
   return (
     <AppShell user={user}>
-      <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1200px] space-y-6 px-4 pb-16 pt-8 sm:px-6 lg:px-9">
         <PageHeader
           title="Explore courses"
           description={courses ? `${pluralize(courses.length, 'course')} to learn from, made by instructors on LearnSphere.` : ' '}
@@ -71,21 +71,21 @@ function ExplorePage() {
               onChange={(e) => updateQuery(e.target.value)}
               placeholder="Search by title, topic or instructor"
               aria-label="Search courses"
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-10 pr-10 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="h-10 w-full rounded-[10px] border border-transparent bg-surface pl-10 pr-10 text-sm placeholder:text-subtle hover:bg-foreground/[0.06] focus-visible:border-foreground/25 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/10"
             />
             {query ? (
               <button
                 type="button"
                 onClick={() => updateQuery('')}
                 aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-white/10 hover:text-foreground"
+                className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             ) : null}
           </label>
           <div className="flex items-center gap-2">
-            <div role="radiogroup" aria-label="Price" className="inline-flex rounded-xl bg-white/[0.03] p-1 ring-1 ring-white/10">
+            <div role="radiogroup" aria-label="Price" className="inline-flex rounded-full bg-surface p-1">
               {(['all', 'free', 'paid'] as const).map((p) => (
                 <button
                   key={p}
@@ -94,8 +94,10 @@ function ExplorePage() {
                   aria-checked={price === p}
                   onClick={() => setPrice(p)}
                   className={cn(
-                    'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors',
-                    price === p ? 'bg-white/10 text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    'h-8 rounded-full px-3.5 text-[13px] font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
+                    price === p
+                      ? 'bg-background text-foreground shadow-[0_0_0_1px_hsl(var(--border)),0_1px_2px_rgb(17_17_19/0.06)]'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   {p}
@@ -106,7 +108,7 @@ function ExplorePage() {
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
               aria-label="Sort"
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="h-10 rounded-[10px] border border-transparent bg-surface px-3 text-sm text-foreground hover:bg-foreground/[0.06] focus-visible:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/10"
             >
               <option value="newest">Newest</option>
               <option value="price-asc">Price: low to high</option>
@@ -119,7 +121,7 @@ function ExplorePage() {
           <CourseGrid>
             {Array.from({ length: 8 }, (_, i) => (
               <div key={i} className="space-y-3">
-                <Skeleton className="aspect-video w-full rounded-2xl" />
+                <Skeleton className="aspect-video w-full rounded-[12px]" />
                 <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-3 w-1/2" />
               </div>

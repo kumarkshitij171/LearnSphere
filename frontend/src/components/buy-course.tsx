@@ -204,18 +204,18 @@ export function BuyCourse({
   const unavailable = providers !== null && !provider && !free;
 
   return (
-    <Card className="glass border-white/10">
+    <Card variant="panel">
       <CardContent className="flex flex-col items-center gap-4 p-5 text-center">
         {phase === 'confirming' || phase === 'unlocking' ? (
           <>
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-muted-foreground">
               {phase === 'confirming' ? 'Confirming your payment…' : 'Payment received — unlocking your course…'}
             </p>
           </>
         ) : phase === 'confirm-slow' ? (
           <>
-            <Clock className="h-8 w-8 text-amber-300" />
+            <Clock className="h-8 w-8 text-warning" />
             <p className="max-w-md text-muted-foreground">
               We are still waiting for the payment provider to confirm. If you were charged, the course unlocks on
               its own within a few minutes — you can safely leave this page.
@@ -251,12 +251,12 @@ export function BuyCourse({
               <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {free ? 'Free course' : 'One-time purchase'}
               </p>
-              <p className="mt-1 font-display text-3xl font-bold tracking-tight">
+              <p className="mt-1 text-3xl font-semibold tracking-tight">
                 {free ? 'Free' : formatPrice(course.price, course.currency)}
               </p>
             </div>
             {!features.purchases ? (
-              <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm text-amber-200 ring-1 ring-amber-400/20">{copy.purchasesPaused}</p>
+              <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning ring-1 ring-warning/20">{copy.purchasesPaused}</p>
             ) : phase === 'failed' ? (
               <Button onClick={retry} className="h-11 w-full gap-2">
                 <RotateCcw className="h-4 w-4" /> Try the payment again

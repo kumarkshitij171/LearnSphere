@@ -52,7 +52,7 @@ cp notification-service/.env.sample notification-service/.env
 make install
 
 # 4. Create the backend tables
-cd backend && npx prisma db push && cd ..
+cd backend && npm run db:migrate:deploy && cd ..
 
 # 5. Run everything
 make start
@@ -94,7 +94,7 @@ One Postgres 15 instance (`testDB`), published on host port **5434**. Data is la
 
 | Schema | Owner | Managed by |
 |---|---|---|
-| `public` | `backend/` — `User`, `Course`, `Enrollment`, `InstructorRequest`, `Video`, `VideoTranscodeJob` | Prisma (`db push`) |
+| `public` | `backend/` — `User`, `Course`, `Enrollment`, `InstructorRequest`, `Video`, `VideoTranscodeJob` | Prisma migrations |
 | `orders` | `order-service` — orders, payments, refunds, outbox, webhook events, audit | Flyway |
 
 MongoDB belongs to `notification-service` (templates, the delivery ledger, device tokens). Redis is shared but namespaced by prefix and holds **nothing** that correctness depends on.
@@ -106,11 +106,11 @@ MongoDB belongs to `notification-service` (templates, the delivery ledger, devic
 `backend/` and `video-transcoder/` currently each keep a `prisma/schema.prisma` pointed at the **same** database, so shared models must be edited in **both** files:
 
 ```bash
-cd backend && npx prisma db push && npx prisma generate
+cd backend && npm run db:migrate:deploy && npx prisma generate
 cd ../video-transcoder && npx prisma generate
 ```
 
-> `npx prisma db push` is a **development** tool — no migration history, no review artefact, no down path. `DATABASE_DESIGN.md` §8.2 has the `prisma migrate` cutover, to be done before the first deploy whose data we would be sorry to lose.
+> Schema changes ship as **migrations** (`backend/prisma/migrations/`, baseline `0_init`): `npm run db:migrate -- --name <change>` creates one locally, `npm run db:migrate:deploy` applies them in CI/production. An existing database built with `db push` is adopted once with `npx prisma migrate resolve --applied 0_init` (`DATABASE_DESIGN.md` §8.2).
 >
 > `npx prisma generate` must run **before `npm test`** in `backend/`, or `@prisma/client` ships stub types and every suite importing a route fails to *compile*.
 

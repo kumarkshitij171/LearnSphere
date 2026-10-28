@@ -50,10 +50,10 @@ export function CoursesPanel() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by title or instructor"
             aria-label="Search courses"
-            className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            className="h-10 w-full rounded-xl border border-border bg-foreground/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
           />
         </label>
-        <div role="radiogroup" aria-label="Status" className="inline-flex rounded-xl bg-white/[0.03] p-1 ring-1 ring-white/10">
+        <div role="radiogroup" aria-label="Status" className="inline-flex rounded-xl bg-foreground/[0.03] p-1 ring-1 ring-foreground/10">
           {(['all', 'live', 'draft'] as const).map((f) => (
             <button
               key={f}
@@ -63,7 +63,7 @@ export function CoursesPanel() {
               onClick={() => setFilter(f)}
               className={
                 filter === f
-                  ? 'rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium capitalize text-foreground'
+                  ? 'rounded-lg bg-foreground/10 px-3 py-1.5 text-sm font-medium capitalize text-foreground'
                   : 'rounded-lg px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground hover:text-foreground'
               }
             >
@@ -74,16 +74,16 @@ export function CoursesPanel() {
       </div>
 
       {courses === null ? (
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-[14px]" />
       ) : error ? (
         <EmptyState icon={<GraduationCap />} title="Courses are unavailable" description={error} />
       ) : shown.length === 0 ? (
         <EmptyState icon={<GraduationCap />} title="No courses match" />
       ) : (
-        <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-2xl border border-white/[0.08]">
+        <ul className="divide-y divide-border overflow-hidden rounded-[14px] border border-border">
           {shown.map((c) => (
-            <li key={c.id} className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-white/[0.02]">
-              <CourseCover id={c.id} title={c.title} size="sm" className="aspect-video w-24 shrink-0 rounded-lg ring-1 ring-white/10" />
+            <li key={c.id} className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-foreground/[0.02]">
+              <CourseCover id={c.id} title={c.title} thumbnail={c.thumbnail} coverVideoId={c.coverVideoId} size="sm" className="aspect-video w-24 shrink-0 rounded-lg ring-1 ring-foreground/10" />
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 truncate text-sm font-medium">
                   {c.title}

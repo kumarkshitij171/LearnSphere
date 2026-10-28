@@ -33,7 +33,7 @@ public class NotificationApiFilter extends OncePerRequestFilter {
         }
         // tenant-id check
         String tenantId = request.getHeader(X_TENANT_ID);
-        if (!CommonUtils.isNotEmpty(tenantId) && request.getRequestURI().startsWith("/api/v1/devices")) {
+        if (!CommonUtils.isNotEmpty(tenantId) && ApiAuthFilter.isUserRoute(request.getRequestURI())) {
             tenantId = defaultTenant;
         }
         if (!CommonUtils.isNotEmpty(tenantId)) {

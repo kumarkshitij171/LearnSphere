@@ -103,7 +103,7 @@ export function SettingsMenu({ rate, onRate, levels, selected, active, onLevel, 
                       <Choice key={l.index} checked={selected === l.index} onClick={() => { onLevel(l.index); setPage('main'); }}>
                         {q.name}
                         {q.badge ? (
-                          <sup className="ml-1 rounded bg-primary/15 px-1 py-px text-[10px] font-semibold not-italic text-primary">{q.badge}</sup>
+                          <sup className="ml-1 rounded bg-highlight/15 px-1 py-px text-[10px] font-semibold not-italic text-highlight">{q.badge}</sup>
                         ) : null}
                       </Choice>
                     );
@@ -152,7 +152,7 @@ function Choice({ checked, onClick, children }: { checked: boolean; onClick: () 
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-3 px-3 py-2 text-left outline-none transition-colors hover:bg-white/[0.07] focus-visible:bg-white/10',
-        checked && 'text-primary'
+        checked && 'text-highlight'
       )}
     >
       <Check className={cn('h-4 w-4 shrink-0', checked ? 'opacity-100' : 'opacity-0')} />

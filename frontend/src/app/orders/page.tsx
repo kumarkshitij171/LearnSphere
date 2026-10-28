@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { toast } from '@/components/ui/toaster';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
-import { ordersApi, getApiErrorMessage, type Order } from '@/lib/api';
+import { coursesApi, ordersApi, getApiErrorMessage, type CourseSummary, type Order } from '@/lib/api';
 import { formatMinor } from '@/lib/money';
 
 const PAGE_SIZE = 20;
@@ -32,6 +32,8 @@ const ACCESS = new Set(['PAID', 'PARTIALLY_REFUNDED']);
 export default function PurchasesPage() {
   const { user, checking } = useRequireAuth();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  // orders carry only the course id and title; the catalogue knows its thumbnail and lesson frame
+  const [covers, setCovers] = useState<Record<string, Pick<CourseSummary, 'thumbnail' | 'coverVideoId'>>>({});
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +48,17 @@ export default function PurchasesPage() {
       setError(getApiErrorMessage(e, 'Could not load your purchases.'));
       setOrders([]);
     }
+  }, []);
+
+  useEffect(() => {
+    Promise.allSettled([coursesApi.enrolled(), coursesApi.list()]).then((results) => {
+      const map: Record<string, Pick<CourseSummary, 'thumbnail' | 'coverVideoId'>> = {};
+      for (const r of results) {
+        if (r.status !== 'fulfilled') continue;
+        for (const c of r.value) map[c.id] ??= { thumbnail: c.thumbnail, coverVideoId: c.coverVideoId };
+      }
+      setCovers(map);
+    });
   }, []);
 
   useEffect(() => {
@@ -95,7 +108,7 @@ export default function PurchasesPage() {
         {orders === null ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }, (_, i) => (
-              <Skeleton key={i} className="h-28 w-full rounded-2xl" />
+              <Skeleton key={i} className="h-28 w-full rounded-[14px]" />
             ))}
           </div>
         ) : error ? (
@@ -123,9 +136,16 @@ export default function PurchasesPage() {
         ) : (
           <ul className="space-y-3">
             {orders.map((o) => (
-              <li key={o.orderId} className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-card/40 p-4 sm:flex-row sm:items-center">
+              <li key={o.orderId} className="flex flex-col gap-4 rounded-[14px] border border-border bg-background p-4 sm:flex-row sm:items-center">
                 <Link href={`/courses/${o.courseId}`} className="shrink-0">
-                  <CourseCover id={o.courseId} title={o.courseTitle} size="sm" className="aspect-video w-full rounded-xl ring-1 ring-white/10 sm:w-36" />
+                  <CourseCover
+                    id={o.courseId}
+                    title={o.courseTitle}
+                    thumbnail={covers[o.courseId]?.thumbnail}
+                    coverVideoId={covers[o.courseId]?.coverVideoId}
+                    size="sm"
+                    className="aspect-video w-full rounded-[10px] sm:w-36"
+                  />
                 </Link>
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -138,7 +158,7 @@ export default function PurchasesPage() {
                     {fmtDate(o.paidAt ?? o.createdAt)} · {PROVIDER_LABEL[o.provider] ?? o.provider}
                   </p>
                   {o.refundedMinor ? (
-                    <p className="text-xs text-sky-200">{formatMinor(o.refundedMinor, o.currency)} refunded to your original payment method</p>
+                    <p className="text-xs text-info">{formatMinor(o.refundedMinor, o.currency)} refunded to your original payment method</p>
                   ) : null}
                   <button
                     type="button"
@@ -150,7 +170,7 @@ export default function PurchasesPage() {
                   </button>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
-                  <span className="font-display text-lg font-bold tabular-nums">
+                  <span className="text-lg font-semibold tabular-nums">
                     {o.amountMinor === 0 ? 'Free' : formatMinor(o.amountMinor, o.currency)}
                   </span>
                   {ACCESS.has(o.status) ? (

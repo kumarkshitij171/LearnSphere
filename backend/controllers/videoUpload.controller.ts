@@ -13,7 +13,16 @@ import {
   updateVideoRecord,
   deleteVideoRecord,
   requeueVideo,
+  findVideoThumbnail,
 } from '../services/video.service';
+import {
+  THUMBNAIL_REDIRECT_HEADERS,
+  isThumbnailKeyFor,
+  presignThumbnailDownload,
+  presignThumbnailUpload,
+  removeThumbnail,
+  verifyThumbnailUpload,
+} from '../services/asset.service';
 import { isEnrolled } from '../services/course.service';
 import { transcodeReportExtras } from '../utils/validation';
 import { randomUUID } from 'crypto';
@@ -312,3 +321,44 @@ export const retryVideo = catchAsyncError(async (req: Request, res: Response, ne
   return res.status(200).json({ success: true, video: lessonView(updated) });
 });
 
+// Public, so an <img> can load it without credentials. 404 means "use the transcoder's poster".
+export const getLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await findVideoThumbnail(req.params.videoId);
+  if (!video || !isThumbnailKeyFor('lesson', video.id, video.thumbnail)) {
+    return next(new ErrorHandler(404, 'This lesson has no thumbnail'));
+  }
+  res.set(THUMBNAIL_REDIRECT_HEADERS);
+  return res.redirect(302, await presignThumbnailDownload(video.thumbnail));
+});
+
+export const presignLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const { uploadUrl, key } = await presignThumbnailUpload('lesson', video.id, req.body.contentType);
+  return res.status(200).json({ success: true, uploadUrl, key });
+});
+
+export const confirmLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const { key } = req.body;
+  const problem = await verifyThumbnailUpload('lesson', video.id, key);
+  if (problem) return next(new ErrorHandler(400, problem));
+
+  await updateVideoRecord(video.id, { thumbnail: key });
+  if (video.thumbnail !== key) await removeThumbnail('lesson', video.id, video.thumbnail);
+  return res.status(200).json({ success: true, thumbnail: key });
+});
+
+export const deleteLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  if (video.thumbnail) {
+    await updateVideoRecord(video.id, { thumbnail: null });
+    await removeThumbnail('lesson', video.id, video.thumbnail);
+  }
+  return res.status(200).json({ success: true });
+});

@@ -55,11 +55,11 @@ export function ProgressCard({
   const resumeAt = next ? resumePosition(progress[next.id]) : null;
 
   return (
-    <section className="rounded-2xl border border-white/[0.08] bg-card/50 p-5" aria-label="Your progress">
+    <section className="rounded-[14px] border border-border bg-background p-5" aria-label="Your progress">
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
           <Ring fraction={fraction} />
-          <span className="absolute inset-0 grid place-items-center text-sm font-bold tabular-nums">{percent}%</span>
+          <span className="absolute inset-0 grid place-items-center text-sm font-semibold tabular-nums">{percent}%</span>
         </div>
         <div className="min-w-0">
           <h3 className="font-semibold">{finished ? 'Course complete' : 'Your progress'}</h3>
@@ -70,14 +70,14 @@ export function ProgressCard({
       </div>
 
       {finished ? (
-        <div className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-400/10 px-3 py-2.5 text-sm text-emerald-200 ring-1 ring-emerald-400/20">
+        <div className="mt-4 flex items-center gap-2 rounded-xl bg-success/10 px-3 py-2.5 text-sm text-success ring-1 ring-success/20">
           <CheckCircle2 className="h-4 w-4 shrink-0" /> You&apos;ve watched every lesson in this course.
         </div>
       ) : next ? (
         <button
           type="button"
           onClick={() => onPlay(next)}
-          className="group mt-4 flex w-full items-center gap-3 rounded-xl bg-white/[0.04] p-3 text-left ring-1 ring-white/[0.06] transition hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="group mt-4 flex w-full items-center gap-3 rounded-xl bg-foreground/[0.04] p-3 text-left ring-1 ring-foreground/[0.06] transition hover:bg-foreground/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
         >
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition group-hover:scale-105">
             {resumeAt ? <RotateCcw className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}

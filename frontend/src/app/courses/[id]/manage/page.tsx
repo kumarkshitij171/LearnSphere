@@ -105,13 +105,13 @@ export default function CourseStudioPage() {
       <main className="min-h-screen bg-background">
         <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
           <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-44 w-full rounded-3xl" />
+          <Skeleton className="h-44 w-full rounded-panel" />
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <div className="space-y-3">
-              <Skeleton className="h-24 w-full rounded-2xl" />
-              <Skeleton className="h-24 w-full rounded-2xl" />
+              <Skeleton className="h-24 w-full rounded-[14px]" />
+              <Skeleton className="h-24 w-full rounded-[14px]" />
             </div>
-            <Skeleton className="h-56 w-full rounded-2xl" />
+            <Skeleton className="h-56 w-full rounded-[14px]" />
           </div>
         </div>
       </main>
@@ -252,13 +252,13 @@ export default function CourseStudioPage() {
           <ArrowLeft className="h-4 w-4" /> Your courses
         </Link>
 
-        <section className="flex flex-col gap-5 rounded-3xl border border-white/[0.08] bg-card/40 p-4 sm:flex-row sm:items-center sm:p-5">
-          <CourseCover id={course.id} title={course.title} className="aspect-video w-full shrink-0 rounded-2xl ring-1 ring-white/10 sm:w-56" />
+        <section className="flex flex-col gap-5 rounded-panel border border-border bg-background p-4 sm:flex-row sm:items-center sm:p-5">
+          <CourseCover id={course.id} title={course.title} thumbnail={course.thumbnail} coverVideoId={course.videos.find((v) => v.status === "READY")?.id ?? null} className="aspect-video w-full shrink-0 rounded-[12px] sm:w-56" />
           <div className="min-w-0 flex-1 space-y-2.5">
             <Badge tone={course.isPublished ? 'success' : 'warning'} dot>
               {course.isPublished ? 'Live' : 'Draft'}
             </Badge>
-            <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{course.title}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{course.title}</h1>
             <p className="line-clamp-2 max-w-2xl text-sm text-muted-foreground">{course.description}</p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span className="font-semibold text-foreground">{formatPrice(course.price, course.currency)}</span>
@@ -308,7 +308,7 @@ export default function CourseStudioPage() {
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-semibold">
                   Lessons
-                  <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                  <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
                     {course.videos.length}
                   </span>
                 </h2>
@@ -340,7 +340,7 @@ export default function CourseStudioPage() {
             )}
           </section>
 
-          <aside className="space-y-4 rounded-2xl border border-white/[0.08] bg-card/40 p-5 lg:sticky lg:top-24">
+          <aside className="space-y-4 rounded-[14px] border border-border bg-background p-5 lg:sticky lg:top-24">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Publishing</h2>
               <Badge tone={course.isPublished ? 'success' : 'warning'} dot>
@@ -367,8 +367,8 @@ export default function CourseStudioPage() {
         </div>
 
         {dragOver ? (
-          <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-background/80 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-primary bg-primary/[0.06] px-16 py-12 text-center">
+          <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-background/80">
+            <div className="flex flex-col items-center gap-3 rounded-panel border-2 border-dashed border-primary bg-surface px-16 py-12 text-center">
               <UploadCloud className="h-8 w-8 text-primary" />
               <p className="text-lg font-semibold">Drop to add a lesson</p>
             </div>

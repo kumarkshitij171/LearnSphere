@@ -48,7 +48,7 @@ export function CenterFeedback({ started, ended, waiting, flash, ripple, chip, o
             onPlay();
           }}
           aria-label={ended ? 'Replay' : 'Play'}
-          className="absolute left-1/2 top-1/2 z-10 grid h-[72px] w-[72px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white shadow-2xl ring-1 ring-white/15 backdrop-blur-md transition hover:scale-105 hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="absolute left-1/2 top-1/2 z-10 grid h-[72px] w-[72px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white shadow-2xl ring-1 ring-white/15 backdrop-blur-md transition hover:scale-105 hover:bg-highlight hover:text-highlight-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
         >
           {ended ? <RotateCcw className="h-8 w-8" /> : <Play className="ml-1 h-8 w-8 fill-current" />}
         </button>

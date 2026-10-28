@@ -94,7 +94,7 @@ Each service has its own dependencies and is run separately. Start infra first: 
 ### backend/ — Express + TypeScript REST API (port 5000/5001)
 - `npm install` then `npm run dev` (ts-node-dev with respawn) — there is **no build/start/test script wired up**; `dev` is the entrypoint (`index.ts`).
 - `npm run debug` — same with `--inspect` on 9229.
-- Prisma uses **`npx prisma db push`** to sync schema (see comment atop `prisma/schema.prisma`); `npx prisma generate` after schema edits.
+- Prisma uses **migrations** (`prisma/migrations/`, baseline `0_init`): `npm run db:migrate -- --name <change>` locally, `npm run db:migrate:deploy` in CI/prod. `db push` only against a throwaway local DB. `npx prisma generate` after schema edits.
 - Requires env vars `JWT_SECRET`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `CLIENT_URL` — `app.ts` hard-exits on startup if any are missing. Copy `.env.sample` → `.env`.
 
 ### frontend/ — Next.js 14 App Router + Tailwind + shadcn-style UI (port 3000)

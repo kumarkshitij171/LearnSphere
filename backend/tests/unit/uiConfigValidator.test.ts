@@ -42,13 +42,13 @@ describe('validateUiConfig', () => {
   it('checks lengths, patterns, types and required keys', () => {
     const doc = defaults();
     doc.navigation.sidebar[0].label = 'x'.repeat(41);
-    doc.theme.primary = 'lime';
+    doc.theme.highlight = 'lime';
     doc.features.purchases = 'yes';
     delete doc.copy.courseLocked;
     const result = validateUiConfig(doc);
     expect(result.ok).toBe(false);
     expect(problemAt(doc, '/navigation/sidebar/0/label')).toBe('must be at most 40 characters');
-    expect(problemAt(doc, '/theme/primary')).toMatch(/must match/);
+    expect(problemAt(doc, '/theme/highlight')).toMatch(/must match/);
     expect(problemAt(doc, '/features/purchases')).toBe('must be boolean');
     expect(problemAt(doc, '/copy/courseLocked')).toBe('is required');
   });
@@ -80,7 +80,7 @@ describe('validateUiConfig', () => {
     expect(validateUiConfig(null).ok).toBe(false);
     expect(validateUiConfig([]).problems[0]).toEqual({ path: '/', message: 'must be object' });
     const doc = defaults();
-    doc.schemaVersion = 2;
+    doc.schemaVersion = 3;
     expect(problemAt(doc, '/schemaVersion')).toMatch(/must be one of/);
   });
 });

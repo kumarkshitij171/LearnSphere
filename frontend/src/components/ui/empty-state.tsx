@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+/** Left-aligned inside its section: what is missing, one sentence, one action. */
 export function EmptyState({
   icon,
   title,
@@ -15,22 +16,15 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.015] px-6 py-12 text-center',
-        className
-      )}
-    >
-      {icon ? (
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20 [&_svg]:h-5 [&_svg]:w-5">
-          {icon}
+    <div className={cn('flex flex-col items-start gap-3 rounded-panel bg-surface px-6 py-7 sm:flex-row sm:items-center sm:justify-between', className)}>
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? <span className="mt-0.5 text-muted-foreground [&_svg]:h-5 [&_svg]:w-5">{icon}</span> : null}
+        <div className="min-w-0 space-y-1">
+          <p className="text-heading">{title}</p>
+          {description ? <p className="max-w-prose text-sm text-body">{description}</p> : null}
         </div>
-      ) : null}
-      <div className="space-y-1">
-        <p className="font-semibold">{title}</p>
-        {description ? <p className="mx-auto max-w-sm text-sm text-muted-foreground">{description}</p> : null}
       </div>
-      {action ? <div className="pt-1">{action}</div> : null}
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }

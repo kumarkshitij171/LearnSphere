@@ -18,7 +18,7 @@ export const DropdownMenuContent = React.forwardRef<
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          'ui-popover z-50 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-[hsl(240_8%_9%)] p-1 text-sm shadow-2xl',
+          'ui-popover z-50 min-w-[12rem] overflow-hidden rounded-xl border border-border bg-popover p-1 text-sm text-popover-foreground shadow-overlay',
           className
         )}
         {...props}
@@ -37,8 +37,8 @@ export const DropdownMenuItem = React.forwardRef<
       className={cn(
         'flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
         tone === 'danger'
-          ? 'text-red-300 data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200'
-          : 'text-foreground/90 data-[highlighted]:bg-white/[0.07] data-[highlighted]:text-foreground',
+          ? 'text-danger data-[highlighted]:bg-danger/10 data-[highlighted]:text-danger'
+          : 'text-foreground data-[highlighted]:bg-surface',
         '[&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground',
         className
       )}
@@ -48,7 +48,7 @@ export const DropdownMenuItem = React.forwardRef<
 });
 
 export function DropdownMenuSeparator({ className }: { className?: string }) {
-  return <Menu.Separator className={cn('my-1 h-px bg-white/[0.07]', className)} />;
+  return <Menu.Separator className={cn('my-1 h-px bg-border', className)} />;
 }
 
 export function DropdownMenuLabel({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

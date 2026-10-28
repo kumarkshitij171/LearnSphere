@@ -9,14 +9,13 @@ import { CourseCard } from '@/components/course-card';
 import { PriceField, priceProblem, priceToNumber, type PriceValue } from '@/components/studio/price-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/components/ui/page-header';
 import { toast } from '@/components/ui/toaster';
 import { useRequireRole } from '@/hooks/useRequireAuth';
 import { coursesApi, getApiErrorMessage, type CourseSummary } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-const TEXTAREA =
-  'flex w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 transition-colors hover:border-white/20 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30';
 
 const NEXT_STEPS = ['Add lessons — drag videos straight onto the course page', 'Preview it exactly as a student will', 'Publish when at least one lesson is ready'];
 
@@ -79,7 +78,7 @@ export default function NewCoursePage() {
         <PageHeader title="Create a course" description="Start with the basics. Everything here can be changed later." />
 
         <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <form onSubmit={submit} className="space-y-6 rounded-3xl border border-white/[0.08] bg-card/40 p-5 sm:p-7" noValidate>
+          <form onSubmit={submit} className="space-y-6 rounded-panel border border-border bg-background p-5 sm:p-7" noValidate>
             <label className="block space-y-2">
               <span className="flex items-center justify-between text-sm font-medium">
                 Title <span className="text-xs font-normal tabular-nums text-muted-foreground">{title.length}/150</span>
@@ -91,26 +90,26 @@ export default function NewCoursePage() {
                 placeholder="e.g. Kafka from zero to production"
                 onChange={(e) => setTitle(e.target.value)}
                 aria-invalid={touched && Boolean(titleProblem)}
-                className={cn(touched && titleProblem && 'border-red-500/50')}
+                className={cn(touched && titleProblem && 'border-danger/50')}
               />
-              {touched && titleProblem ? <span className="text-xs text-red-300">{titleProblem}</span> : null}
+              {touched && titleProblem ? <span className="text-xs text-danger">{titleProblem}</span> : null}
             </label>
 
             <label className="block space-y-2">
               <span className="flex items-center justify-between text-sm font-medium">
                 Description <span className="text-xs font-normal tabular-nums text-muted-foreground">{description.length}/5000</span>
               </span>
-              <textarea
+              <Textarea
                 value={description}
                 maxLength={5000}
                 rows={6}
                 placeholder="What will students be able to do after this course? Who is it for?"
                 onChange={(e) => setDescription(e.target.value)}
                 aria-invalid={touched && Boolean(descriptionProblem)}
-                className={cn(TEXTAREA, touched && descriptionProblem && 'border-red-500/50')}
+                className={cn(touched && descriptionProblem && 'border-danger/50')}
               />
               {touched && descriptionProblem ? (
-                <span className="text-xs text-red-300">{descriptionProblem}</span>
+                <span className="text-xs text-danger">{descriptionProblem}</span>
               ) : (
                 <span className="text-xs text-muted-foreground">Two or three sentences help students decide.</span>
               )}
@@ -118,9 +117,9 @@ export default function NewCoursePage() {
 
             <PriceField value={price} onChange={setPrice} disabled={submitting} />
 
-            {error ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/20">{error}</p> : null}
+            {error ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger ring-1 ring-danger/20">{error}</p> : null}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
               <p className="text-xs text-muted-foreground">It starts as a draft — only you can see it until you publish.</p>
               <Button type="submit" disabled={submitting} className="gap-2">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -134,7 +133,7 @@ export default function NewCoursePage() {
             <div className="pointer-events-none">
               <CourseCard course={preview} href="#" />
             </div>
-            <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-card/40 p-5">
+            <div className="space-y-3 rounded-[14px] border border-border bg-background p-5">
               <p className="text-sm font-semibold">After this</p>
               <ul className="space-y-2.5">
                 {NEXT_STEPS.map((step) => (

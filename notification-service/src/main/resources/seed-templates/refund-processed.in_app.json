@@ -1,0 +1,7 @@
+{
+  "name": "refund-processed",
+  "channel": "IN_APP",
+  "subject": "Refund on its way",
+  "templateVariables": { "courseTitle": null, "amount": null, "name": "there", "orderId": null, "refundId": null },
+  "templateMessage": "We've refunded {{amount}} for {{courseTitle}}."
+}

@@ -11,6 +11,8 @@ export interface CourseSummary {
   /** ISO 4217; the catalogue's single source for how a price is shown. */
   currency: string;
   thumbnail?: string | null;
+  /** the first ready lesson, whose poster frame is the course's cover; null until one is ready */
+  coverVideoId?: string | null;
   isPublished: boolean;
   instructorId: string;
   instructor?: { id: string; name: string; email: string };
@@ -33,6 +35,14 @@ export interface CourseVideo {
   createdAt?: string;
   metadata?: { error?: string; errorCode?: LessonErrorCode } | null;
   resolutions?: Array<{ label: string; width: number; height: number; bandwidth: number }> | null;
+  /** S3 key of an uploaded thumbnail; null = the transcoder's poster frame */
+  thumbnail?: string | null;
+}
+
+/** Where to PUT a thumbnail image, and the key to confirm afterwards. */
+export interface ThumbnailPresign {
+  uploadUrl: string;
+  key: string;
 }
 
 export interface CourseDetail extends CourseSummary {
@@ -47,7 +57,6 @@ export interface CreateCoursePayload {
   title: string;
   description: string;
   price?: number;
-  thumbnail?: string;
 }
 
 export const coursesApi = {
@@ -76,6 +85,17 @@ export const coursesApi = {
   },
   remove(id: string) {
     return apiClient.delete(endpoints.courses.byId(id));
+  },
+  async presignThumbnail(id: string, contentType: string): Promise<ThumbnailPresign> {
+    const { data } = await apiClient.post(endpoints.courses.thumbnailPresign(id), { contentType });
+    return { uploadUrl: data.uploadUrl, key: data.key };
+  },
+  async setThumbnail(id: string, key: string): Promise<string> {
+    const { data } = await apiClient.put(endpoints.courses.thumbnail(id), { key });
+    return data.thumbnail;
+  },
+  removeThumbnail(id: string) {
+    return apiClient.delete(endpoints.courses.thumbnail(id));
   },
   /** Instructor/admin grant. Students get 402 { requiresOrder } and must buy through ordersApi. */
   grant(id: string, userId: string) {

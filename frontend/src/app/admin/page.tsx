@@ -74,7 +74,7 @@ function AdminConsole() {
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="requests">
               Instructor requests
-              {pending ? <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-bold text-primary-foreground">{pending}</span> : null}
+              {pending ? <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">{pending}</span> : null}
             </TabsTrigger>
           </TabsList>
 
@@ -89,9 +89,9 @@ function AdminConsole() {
               <button
                 type="button"
                 onClick={() => go('requests')}
-                className="group flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-card/40 p-5 text-left transition-colors hover:border-white/20"
+                className="group flex items-center gap-4 rounded-[14px] border border-border bg-background p-5 text-left transition-colors hover:border-foreground/20"
               >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-surface text-primary ring-1 ring-primary/20">
                   <Inbox className="h-5 w-5" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -104,9 +104,9 @@ function AdminConsole() {
               </button>
               <Link
                 href="/admin/ui-config"
-                className="group flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-r from-primary/[0.08] to-card/40 p-5 transition-colors hover:border-primary/40"
+                className="group flex items-center gap-4 rounded-[14px] border border-border p-5 transition-colors hover:border-foreground/25"
               >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-surface text-primary ring-1 ring-primary/20">
                   <SlidersHorizontal className="h-5 w-5" />
                 </span>
                 <span className="min-w-0 flex-1">

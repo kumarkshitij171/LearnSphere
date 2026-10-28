@@ -1,23 +1,30 @@
 package com.lms.notification_service.support;
 
 import com.lms.notification_service.models.domain.ChannelType;
+import com.lms.notification_service.models.domain.NotificationStatus;
 import com.lms.notification_service.models.entity.DeadLetter;
 import com.lms.notification_service.models.entity.Notification;
 import com.lms.notification_service.models.entity.Template;
 import com.lms.notification_service.repository.DeadLetterRepository;
 import com.lms.notification_service.repository.NotificationRepository;
 import com.lms.notification_service.repository.TemplateRepository;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 
@@ -41,6 +48,8 @@ public final class InMemoryStore {
                 notifications.stream().filter(n -> n.getTenantId().equals(inv.getArgument(0))
                         && n.getNotificationId().equals(inv.getArgument(1))).toList());
 
+        wireInbox(notificationRepo);
+
         lenient().when(deadLetterRepo.save(any(DeadLetter.class))).thenAnswer(inv -> {
             DeadLetter d = inv.getArgument(0);
             if (d.getId() == null) {
@@ -59,6 +68,62 @@ public final class InMemoryStore {
 
         lenient().when(templateRepo.findByTenantIdAndNameAndChannelAndActiveIsTrue(anyString(), anyString(), any(ChannelType.class)))
                 .thenAnswer(inv -> Optional.ofNullable(templates.get(inv.getArgument(1) + "/" + inv.getArgument(2))));
+    }
+
+    // the inbox's derived queries, with the semantics Mongo gives them
+    private void wireInbox(NotificationRepository repo) {
+        lenient().when(repo.findByTenantIdAndUserIdAndChannelAndStatusOrderByCreatedAtDesc(
+                anyString(), anyString(), any(ChannelType.class), any(NotificationStatus.class), any(Limit.class))).thenAnswer(inv ->
+                inbox(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3))
+                        .sorted(Comparator.comparingLong(Notification::getCreatedAt).reversed())
+                        .limit(inv.<Limit>getArgument(4).max())
+                        .toList());
+        lenient().when(repo.countByTenantIdAndUserIdAndChannelAndStatusAndReadAtIsNull(
+                anyString(), anyString(), any(ChannelType.class), any(NotificationStatus.class))).thenAnswer(inv ->
+                inbox(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3))
+                        .filter(n -> n.getReadAt() == null).count());
+        lenient().when(repo.findAndSetReadAtByTenantIdAndUserIdAndChannelAndStatusAndReadAtIsNull(
+                anyString(), anyString(), any(ChannelType.class), any(NotificationStatus.class), anyLong())).thenAnswer(inv ->
+                markRead(inbox(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)),
+                        inv.getArgument(4)));
+        lenient().when(repo.findAndSetReadAtByTenantIdAndUserIdAndChannelAndStatusAndReadAtIsNullAndIdIn(
+                anyString(), anyString(), any(ChannelType.class), any(NotificationStatus.class), anyCollection(), anyLong()))
+                .thenAnswer(inv -> {
+                    Collection<String> ids = inv.getArgument(4);
+                    return markRead(inbox(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3))
+                            .filter(n -> ids.contains(n.getId())), inv.getArgument(5));
+                });
+    }
+
+    private Stream<Notification> inbox(String tenantId, String userId, ChannelType channel, NotificationStatus status) {
+        return notifications.stream().filter(n -> tenantId.equals(n.getTenantId()) && userId.equals(n.getUserId())
+                && n.getChannel() == channel && n.getStatus() == status);
+    }
+
+    private static long markRead(Stream<Notification> rows, long now) {
+        List<Notification> unread = rows.filter(n -> n.getReadAt() == null).toList();
+        unread.forEach(n -> {
+            n.setReadAt(now);
+            n.setUpdatedAt(now);
+        });
+        return unread.size();
+    }
+
+    /** An already-delivered inbox row, created at the given epoch millis. */
+    public Notification inboxRow(String tenantId, String userId, String title, long createdAt) {
+        Notification n = new Notification();
+        n.setId(UUID.randomUUID().toString());
+        n.setNotificationId("n-" + n.getId());
+        n.setTenantId(tenantId);
+        n.setUserId(userId);
+        n.setChannel(ChannelType.IN_APP);
+        n.setStatus(NotificationStatus.SENT);
+        n.setTitle(title);
+        n.setBody(title + " body");
+        n.setCreatedAt(createdAt);
+        n.setUpdatedAt(createdAt);
+        notifications.add(n);
+        return n;
     }
 
     public void template(String name, ChannelType channel, String subject, String body) {

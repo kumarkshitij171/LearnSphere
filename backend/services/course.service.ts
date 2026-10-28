@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma, EnrollmentSource } from '@prisma/client';
 import { deleteVideoS3Artifacts } from './s3.service';
+import { removeThumbnail } from './asset.service';
 
 const prisma = new PrismaClient();
 
@@ -9,7 +10,6 @@ export interface CreateCourseInput {
   title: string;
   description: string;
   price?: number;
-  thumbnail?: string;
 }
 
 export const createCourse = (instructorId: string, input: CreateCourseInput) =>
@@ -18,7 +18,6 @@ export const createCourse = (instructorId: string, input: CreateCourseInput) =>
       title: input.title,
       description: input.description,
       price: input.price ?? 0,
-      thumbnail: input.thumbnail ?? null,
       instructorId,
     },
   });
@@ -26,32 +25,57 @@ export const createCourse = (instructorId: string, input: CreateCourseInput) =>
 // What a student counts as "lessons" is what they can watch: processing and failed videos are not.
 const readyLessonCount = { videos: { where: { status: 'READY' as const } } };
 
+// The first ready lesson's poster is the cover of a course without a thumbnail of its own.
+const firstReadyLesson = {
+  where: { status: 'READY' as const },
+  orderBy: { createdAt: 'asc' as const },
+  take: 1,
+  select: { id: true },
+};
+
+const withCoverVideoId = <T extends { videos?: { id: string }[] }>(courses: T[]) =>
+  courses.map(({ videos, ...course }) => ({ ...course, coverVideoId: videos?.[0]?.id ?? null }));
+
 // A published course with nothing ready to watch (every lesson deleted or failed) stays out of the
 // catalogue rather than being sold empty.
-export const listPublishedCourses = () =>
-  prisma.course.findMany({
-    where: { isPublished: true, videos: { some: { status: 'READY' } } },
-    orderBy: { createdAt: 'desc' },
-    include: { instructor: { select: instructorSelect }, _count: { select: readyLessonCount } },
-  });
+export const listPublishedCourses = async () =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { isPublished: true, videos: { some: { status: 'READY' } } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: readyLessonCount },
+        videos: firstReadyLesson,
+      },
+    })
+  );
 
 /** Every course, drafts included, for the admin console — with who made it and how it is doing. */
-export const listAllCourses = () =>
-  prisma.course.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      instructor: { select: instructorSelect },
-      _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
-    },
-  });
+export const listAllCourses = async () =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
+        videos: firstReadyLesson,
+      },
+    })
+  );
 
-export const listMyCourses = (instructorId: string) =>
-  prisma.course.findMany({
-    where: { instructorId },
-    orderBy: { createdAt: 'desc' },
-    // the instructor sees every lesson they made; students counted are the ones with access today
-    include: { _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } } },
-  });
+export const listMyCourses = async (instructorId: string) =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { instructorId },
+      orderBy: { createdAt: 'desc' },
+      // the instructor sees every lesson they made; students counted are the ones with access today
+      include: {
+        _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
+        videos: firstReadyLesson,
+      },
+    })
+  );
 
 export const getCourseById = (courseId: string, opts: { withVideos?: boolean } = {}) =>
   prisma.course.findUnique({
@@ -63,6 +87,9 @@ export const getCourseById = (courseId: string, opts: { withVideos?: boolean } =
         : false,
     },
   });
+
+export const findCourseThumbnail = (courseId: string) =>
+  prisma.course.findUnique({ where: { id: courseId }, select: { id: true, thumbnail: true } });
 
 export const countReadyVideos = (courseId: string) =>
   prisma.video.count({ where: { courseId, status: 'READY' } });
@@ -93,11 +120,12 @@ export const updateCourse = (courseId: string, data: Prisma.CourseUpdateInput) =
   prisma.course.update({ where: { id: courseId }, data });
 
 // Cascade: drop the course's videos (+ transcode jobs) and enrollments, then
-// best-effort clean up each video's S3 artifacts.
+// best-effort clean up each video's S3 artifacts and every thumbnail.
 export const deleteCourse = async (courseId: string) => {
+  const course = await findCourseThumbnail(courseId);
   const videos = await prisma.video.findMany({
     where: { courseId },
-    select: { id: true, originalKey: true },
+    select: { id: true, originalKey: true, thumbnail: true },
   });
   const videoIds = videos.map((v) => v.id);
 
@@ -110,7 +138,11 @@ export const deleteCourse = async (courseId: string) => {
     prisma.course.delete({ where: { id: courseId } }),
   ]);
 
-  await Promise.allSettled(videos.map((v) => deleteVideoS3Artifacts(v.originalKey, v.id)));
+  await Promise.allSettled([
+    removeThumbnail('course', courseId, course?.thumbnail),
+    ...videos.map((v) => deleteVideoS3Artifacts(v.originalKey, v.id)),
+    ...videos.map((v) => removeThumbnail('lesson', v.id, v.thumbnail)),
+  ]);
 };
 
 export interface EnrollOptions {
@@ -168,9 +200,15 @@ export const isEnrolled = async (userId: string, courseId: string) => {
   return !!found && !found.revokedAt;
 };
 
-export const listEnrolledCourses = (userId: string) =>
-  prisma.course.findMany({
-    where: { enrollments: { some: { userId, revokedAt: null } } },
-    orderBy: { createdAt: 'desc' },
-    include: { instructor: { select: instructorSelect }, _count: { select: readyLessonCount } },
-  });
+export const listEnrolledCourses = async (userId: string) =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { enrollments: { some: { userId, revokedAt: null } } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: readyLessonCount },
+        videos: firstReadyLesson,
+      },
+    })
+  );

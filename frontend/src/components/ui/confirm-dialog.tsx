@@ -74,7 +74,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
           <DialogHeader className="pr-6">
             <div className="flex items-start gap-3">
               {danger ? (
-                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/10 text-red-300 ring-1 ring-red-500/20">
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-danger/10 text-danger">
                   <AlertTriangle className="h-4 w-4" />
                 </span>
               ) : null}
@@ -94,7 +94,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                   <Input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} disabled={busy} />
                 </label>
               ) : null}
-              {error ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p> : null}
+              {error ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
             </DialogBody>
           ) : null}
           <DialogFooter>

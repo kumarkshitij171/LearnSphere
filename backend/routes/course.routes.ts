@@ -9,11 +9,20 @@ import {
   listEnrolled,
   rejectStudentEnroll,
   grantEnrollment,
+  getCourseThumbnail,
+  presignCourseThumbnail,
+  confirmCourseThumbnail,
+  deleteCourseThumbnail,
 } from '../controllers/course.controller';
 import { isAuthenticated, authorizedRoles } from '../middleware/auth';
 import { requireCourseOwner } from '../middleware/ownership';
 import { validate } from '../utils/validation';
-import { createCourseSchema, updateCourseSchema } from '../utils/validation';
+import {
+  createCourseSchema,
+  updateCourseSchema,
+  thumbnailPresignSchema,
+  thumbnailConfirmSchema,
+} from '../utils/validation';
 
 const router = express.Router();
 
@@ -28,6 +37,24 @@ router.post(
   validate(createCourseSchema),
   createCourse
 );
+
+// Public: course art is not secret, and an <img> cannot attach a bearer token.
+router.get('/:courseId/thumbnail', getCourseThumbnail);
+router.post(
+  '/:courseId/thumbnail/presign',
+  isAuthenticated,
+  requireCourseOwner,
+  validate(thumbnailPresignSchema),
+  presignCourseThumbnail
+);
+router.put(
+  '/:courseId/thumbnail',
+  isAuthenticated,
+  requireCourseOwner,
+  validate(thumbnailConfirmSchema),
+  confirmCourseThumbnail
+);
+router.delete('/:courseId/thumbnail', isAuthenticated, requireCourseOwner, deleteCourseThumbnail);
 
 router.get('/:courseId', isAuthenticated, getCourse);
 

@@ -124,18 +124,32 @@ export const createCourseSchema = Joi.object({
         'string.min': 'Description must be at least 10 characters long',
         'any.required': 'Description is required'
     }),
-    price: coursePrice.optional(),
-    thumbnail: Joi.string().uri().optional().allow(null, '')
+    price: coursePrice.optional()
 });
 
-// Course update validation schema (all fields optional)
+// Course update validation schema (all fields optional). The thumbnail is set only through its
+// upload endpoints, never as a free-form URL.
 export const updateCourseSchema = Joi.object({
     title: Joi.string().trim().min(3).max(150).optional(),
     description: Joi.string().trim().min(10).max(5000).optional(),
     price: coursePrice.optional(),
-    thumbnail: Joi.string().uri().optional().allow(null, ''),
     isPublished: Joi.boolean().optional()
 }).min(1);
+
+// Course and lesson thumbnails: content type → the extension its S3 key gets
+export const THUMBNAIL_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as const;
+export type ThumbnailContentType = keyof typeof THUMBNAIL_TYPES;
+
+export const thumbnailPresignSchema = Joi.object({
+    contentType: Joi.string().valid(...Object.keys(THUMBNAIL_TYPES)).required().messages({
+        'any.only': 'A thumbnail must be a JPEG, PNG or WebP image',
+        'any.required': 'contentType is required'
+    })
+});
+
+export const thumbnailConfirmSchema = Joi.object({
+    key: Joi.string().max(512).required().messages({ 'any.required': 'key is required' })
+});
 
 // Video update validation schema (title/description only; all optional)
 export const updateVideoSchema = Joi.object({

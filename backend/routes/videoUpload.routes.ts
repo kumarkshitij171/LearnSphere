@@ -9,11 +9,20 @@ import {
   presignReplacement,
   confirmReplacement,
   retryVideo,
+  getLessonThumbnail,
+  presignLessonThumbnail,
+  confirmLessonThumbnail,
+  deleteLessonThumbnail,
 } from '../controllers/videoUpload.controller';
 import { authorizedRoles, isAuthenticated } from '../middleware/auth';
 import { requireCourseOwner } from '../middleware/ownership';
 import { transcoderApiKeyAuth } from '../middleware/transcoderAuth';
-import { validate, updateVideoSchema } from '../utils/validation';
+import {
+  validate,
+  updateVideoSchema,
+  thumbnailPresignSchema,
+  thumbnailConfirmSchema,
+} from '../utils/validation';
 import express from 'express';
 
 const router = express.Router();
@@ -56,6 +65,24 @@ router.post(
 router.post('/:videoId/replace/presign', isAuthenticated, authorizedRoles('INSTRUCTOR'), presignReplacement);
 router.post('/:videoId/replace', isAuthenticated, authorizedRoles('INSTRUCTOR'), confirmReplacement);
 router.post('/:videoId/retry', isAuthenticated, authorizedRoles('INSTRUCTOR'), retryVideo);
+
+// Lesson thumbnail: public read for <img>; writes for the lesson's owner (checked in the controller)
+router.get('/:videoId/thumbnail', getLessonThumbnail);
+router.post(
+  '/:videoId/thumbnail/presign',
+  isAuthenticated,
+  authorizedRoles('INSTRUCTOR'),
+  validate(thumbnailPresignSchema),
+  presignLessonThumbnail
+);
+router.put(
+  '/:videoId/thumbnail',
+  isAuthenticated,
+  authorizedRoles('INSTRUCTOR'),
+  validate(thumbnailConfirmSchema),
+  confirmLessonThumbnail
+);
+router.delete('/:videoId/thumbnail', isAuthenticated, authorizedRoles('INSTRUCTOR'), deleteLessonThumbnail);
 
 router.get(
   '/:videoId',

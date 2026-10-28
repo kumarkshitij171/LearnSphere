@@ -22,6 +22,14 @@ describe('watch progress', () => {
     expect(loadProgress('u1').v1!.completed).toBe(true);
   });
 
+  it('does not record opening a lesson as watching it', () => {
+    recordProgress('u1', 'c1', 'v1', 0, 100);
+    expect(loadProgress('u1').v1).toBeUndefined();
+    recordProgress('u1', 'c1', 'v1', 6, 100);
+    recordProgress('u1', 'c1', 'v1', 0, 100);
+    expect(loadProgress('u1').v1!.position).toBe(0);
+  });
+
   it('restarts a finished lesson from the top', () => {
     recordProgress('u1', 'c1', 'v1', 99, 100, true);
     expect(loadProgress('u1').v1!.position).toBe(0);

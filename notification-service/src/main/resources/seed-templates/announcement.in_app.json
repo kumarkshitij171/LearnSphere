@@ -1,0 +1,7 @@
+{
+  "name": "announcement",
+  "channel": "IN_APP",
+  "subject": "{{title}}",
+  "templateVariables": { "title": "LearnSphere", "message": "", "link": null },
+  "templateMessage": "{{message}}"
+}

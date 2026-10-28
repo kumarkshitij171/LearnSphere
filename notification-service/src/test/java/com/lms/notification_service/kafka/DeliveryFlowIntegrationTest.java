@@ -199,6 +199,18 @@ class DeliveryFlowIntegrationTest {
     }
 
     @Test
+    void theInboxNeedsNoConfigAndLandsWhilePushIsOff() throws Exception {
+        store.template("order-receipt", ChannelType.IN_APP, "You're in — {{courseTitle}}", "Your course is unlocked.");
+        String id = publish(List.of(ChannelType.PUSH, ChannelType.IN_APP), "order-receipt");
+        await("inbox row SENT", () -> store.row(id, ChannelType.IN_APP).map(n -> n.getStatus() == NotificationStatus.SENT).orElse(false));
+        var row = store.row(id, ChannelType.IN_APP).get();
+        assertThat(row.getTitle()).isEqualTo("You're in — Kafka 101");
+        assertThat(row.getBody()).isEqualTo("Your course is unlocked.");
+        assertThat(row.getUserId()).isEqualTo("u1");
+        assertThat(row.getReadAt()).isNull();
+    }
+
+    @Test
     void aDeadLetterIsReplayedOnceTheCauseIsFixed() throws Exception {
         mailOutcomes(true);
         String id = publish(List.of(ChannelType.EMAIL), "receipt-v2");

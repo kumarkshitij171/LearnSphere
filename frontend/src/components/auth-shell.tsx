@@ -1,81 +1,49 @@
+'use client';
+
+import { Check } from 'lucide-react';
 import { Logo } from '@/components/brand';
-import { Quote, Check } from 'lucide-react';
-
-interface AuthShellProps {
-  children: React.ReactNode;
-}
-
-const highlights = [
-  'Expert-led courses across 40+ categories',
-  'Track progress with real-time analytics',
-  'Earn verifiable certificates',
-];
+import { ThemeToggleButton } from '@/components/theme-toggle';
+import { TwoTone } from '@/components/ui/two-tone';
+import { useUiConfig } from '@/lib/ui-config';
 
 /**
- * Split-screen auth layout: a dark brand panel on the left (hidden on small
- * screens) and the form slot on the right.
+ * Sign-in and sign-up: a quiet panel of true statements from the UI config on the left (wide
+ * screens only), the form on the right.
  */
-export function AuthShell({ children }: AuthShellProps) {
+export function AuthShell({ children }: { children: React.ReactNode }) {
+  const { auth, branding } = useUiConfig();
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Brand panel */}
-      <div className="relative hidden w-[45%] overflow-hidden border-r border-white/10 bg-grid lg:flex lg:flex-col lg:justify-between lg:p-12 xl:w-1/2">
-        <div className="pointer-events-none absolute inset-0 bg-spotlight" />
-        <div className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-primary/15 blur-3xl animate-blob" />
-        <div className="pointer-events-none absolute bottom-10 right-0 h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl animate-blob animation-delay-2000" />
-
-        <div className="relative">
-          <Logo />
+      <aside className="hidden w-[44%] flex-col justify-between bg-surface p-12 lg:flex xl:w-1/2 xl:p-16">
+        <Logo />
+        <div className="max-w-md space-y-8">
+          <TwoTone as="h2" lead={auth.heading.title} trail={auth.heading.titleHighlight} breakLine className="text-display-l" />
+          {auth.points.length ? (
+            <ul className="space-y-3">
+              {auth.points.map((point) => (
+                <li key={point} className="flex items-start gap-3 text-[15px] text-body">
+                  <span className="mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-md bg-highlight text-highlight-foreground">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                  {point}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-
-        <div className="relative space-y-8">
-          <h2 className="max-w-md font-display text-4xl font-bold leading-[1.1] tracking-tight text-foreground">
-            The smarter way to{' '}
-            <span className="text-gradient">learn, teach and grow.</span>
-          </h2>
-          <ul className="space-y-3.5">
-            {highlights.map((h) => (
-              <li key={h} className="flex items-center gap-3 text-muted-foreground">
-                <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/30">
-                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                </span>
-                {h}
-              </li>
-            ))}
-          </ul>
-
-          <figure className="glass max-w-md rounded-2xl p-6">
-            <Quote className="h-6 w-6 text-primary" />
-            <blockquote className="mt-3 text-sm leading-relaxed text-foreground/90">
-              “LearnSphere completely changed how our team upskills. Beautiful,
-              fast, and our learners actually finish their courses.”
-            </blockquote>
-            <figcaption className="mt-4 flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-lime-300 to-emerald-400 text-sm font-bold text-[#0A0A0F]">
-                P
-              </span>
-              <span className="text-sm">
-                <span className="block font-medium text-foreground">Priya Sharma</span>
-                <span className="block text-muted-foreground">Head of L&amp;D, Northwind</span>
-              </span>
-            </figcaption>
-          </figure>
-        </div>
-
-        <p className="relative text-sm text-muted-foreground">
-          © {new Date().getFullYear()} LearnSphere. All rights reserved.
+        <p className="text-[13px] text-muted-foreground">
+          © {new Date().getFullYear()} {branding.appName}
         </p>
-      </div>
+      </aside>
 
-      {/* Form panel */}
-      <div className="relative flex w-full flex-col justify-center px-4 py-12 lg:w-[55%] lg:px-12 xl:w-1/2">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-grid opacity-40 lg:hidden" />
-        <div className="mx-auto w-full max-w-md">
-          <div className="mb-10 lg:hidden">
+      <div className="relative flex w-full flex-col px-4 py-6 sm:px-8 lg:w-[56%] lg:px-12 xl:w-1/2">
+        <div className="flex items-center justify-between">
+          <span className="lg:invisible">
             <Logo />
-          </div>
-          {children}
+          </span>
+          <ThemeToggleButton />
         </div>
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">{children}</div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -80,7 +81,7 @@ export function RefundDialog({ order, onClose, onRefunded }: { order: Order | nu
                 onClick={() => setMode(m)}
                 className={cn(
                   'rounded-xl border p-3 text-left transition-colors',
-                  mode === m ? 'border-primary/60 bg-primary/[0.06]' : 'border-white/10 hover:border-white/20'
+                  mode === m ? 'border-primary/60 bg-surface' : 'border-border hover:border-foreground/20'
                 )}
               >
                 <span className="block text-sm font-semibold">{m === 'full' ? 'Everything left' : 'Part of it'}</span>
@@ -98,24 +99,23 @@ export function RefundDialog({ order, onClose, onRefunded }: { order: Order | nu
                 autoFocus
                 value={amount}
                 onChange={(e) => /^\d*(\.\d{0,2})?$/.test(e.target.value) && setAmount(e.target.value)}
-                className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm tabular-nums focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                className="h-11 w-full rounded-lg border border-border bg-foreground/[0.03] px-3 text-sm tabular-nums focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
               />
-              {amount && amountProblem ? <span className="text-xs text-red-300">{amountProblem}</span> : null}
+              {amount && amountProblem ? <span className="text-xs text-danger">{amountProblem}</span> : null}
             </label>
           ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-medium">Reason</span>
-            <textarea
+            <Textarea
               value={reason}
               rows={3}
               maxLength={500}
               placeholder="e.g. Bought by mistake, asked within 24 hours"
               onChange={(e) => setReason(e.target.value)}
-              className="flex w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             />
           </label>
           <p className="text-xs text-muted-foreground">A full refund also removes the student&apos;s access to the course.</p>
-          {error ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p> : null}
+          {error ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>

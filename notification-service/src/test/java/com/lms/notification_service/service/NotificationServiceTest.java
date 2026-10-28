@@ -2,6 +2,7 @@ package com.lms.notification_service.service;
 
 import com.lms.notification_service.channel.ChannelSender;
 import com.lms.notification_service.channel.ChannelSenderRegistry;
+import com.lms.notification_service.channel.inapp.InAppSender;
 import com.lms.notification_service.models.domain.ChannelType;
 import com.lms.notification_service.models.domain.ErrorType;
 import com.lms.notification_service.models.domain.NotificationStatus;
@@ -143,6 +144,38 @@ class NotificationServiceTest {
         assertThat(meters.get("notifications_dead_letters_open").gauge().value()).isZero();
         service.process(message(List.of(ChannelType.SMS)), 0);
         assertThat(meters.get("notifications_dead_letters_open").gauge().value()).isEqualTo(1);
+    }
+
+    @Test
+    void anInAppMessageIsSavedAsTheUsersInboxEntry() {
+        store.template("order-receipt", ChannelType.IN_APP, "You're in — {{courseTitle}}", "Payment of {{amount}} received.");
+        when(email.send(any(), any(), any())).thenReturn(SendResult.sent("smtp", "<id@x>"));
+        service = new NotificationService(notifications, deadLetters, new TemplateService(templates), idempotency,
+                new ChannelSenderRegistry(List.of(email, new InAppSender())), new NotificationMetrics(meters, deadLetters),
+                rateLimits, JsonMapper.builder().build());
+
+        // no target: the inbox needs none
+        assertThat(service.process(new NotificationMessage("n1", "learnsphere", "u1", List.of(ChannelType.EMAIL, ChannelType.IN_APP),
+                "order-receipt", new NotificationTarget("a@b.c", null, null),
+                Map.of("courseTitle", "Kafka", "amount", "₹499.00", "link", "/courses/c1"), 0), 0)).isEmpty();
+
+        Notification row = store.row("n1", ChannelType.IN_APP).orElseThrow();
+        assertThat(row.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(row.getTitle()).isEqualTo("You're in — Kafka");
+        assertThat(row.getBody()).isEqualTo("Payment of ₹499.00 received.");
+        assertThat(row.getLink()).isEqualTo("/courses/c1");
+        assertThat(row.getTarget()).isEqualTo("inbox");
+        // only the inbox row carries the rendered text
+        assertThat(store.row("n1", ChannelType.EMAIL).orElseThrow().getTitle()).isNull();
+
+        var inbox = new InboxService(notifications).list("learnsphere", "u1", 30);
+        assertThat(inbox.items()).singleElement().satisfies(item -> {
+            assertThat(item.notificationId()).isEqualTo("n1");
+            assertThat(item.title()).isEqualTo("You're in — Kafka");
+            assertThat(item.readAt()).isNull();
+        });
+        assertThat(inbox.unread()).isEqualTo(1);
+        assertThat(new InboxService(notifications).list("learnsphere", "u2", 30).items()).isEmpty();
     }
 
     @Test

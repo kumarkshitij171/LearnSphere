@@ -424,8 +424,9 @@ so a video deleted mid-transcode is dropped instead of redelivered forever.
 
 ### Poster frame
 
-Every transcode also writes **`{videoId}/poster.jpg`**: one frame about 10% in (at least 1 s; a clip
-shorter than that gets its middle frame), at most 1280 wide, aspect kept, rotation applied so a
+Every transcode also writes **`{videoId}/poster.jpg`**: one frame at a pseudo-random point in 15–75%
+of the video, seeded by the `videoId` so a retry takes the same frame, never within 1 s of either end
+(a clip under 3 s gets its middle frame), at most 1280 wide, aspect kept, rotation applied so a
 portrait upload gets a portrait poster. It is uploaded with the HLS (`image/jpeg`) and served by the
 same route, `/api/video-transcoder/hls/{videoId}/poster.jpg`. **No contract change** — the path is
 deterministic. A poster failure is logged and never fails the transcode; videos transcoded before

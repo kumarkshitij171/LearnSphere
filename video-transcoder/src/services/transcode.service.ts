@@ -77,7 +77,7 @@ export const transcodeVideo = async (options: TranscodeOptions): Promise<Transco
     // uploaded with the HLS as {videoId}/poster.jpg; a video without one still plays, so it never fails the job
     const posterPath = join(outputDir, 'poster.jpg');
     try {
-      await extractPoster(inputPath, posterPath, posterTime(source.durationSec));
+      await extractPoster(inputPath, posterPath, posterTime(source.durationSec, videoId));
     } catch (error) {
       cleanupTempFiles([posterPath]);
       logger.warn(`No poster for ${videoId}, continuing without one: ${(error as Error)?.message}`);

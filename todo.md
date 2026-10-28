@@ -150,7 +150,7 @@ migration becomes a rewrite.
 - [ ] **backend Phase 4** — `ownership.ts` via `course.service`; ESLint with the
       `no-restricted-imports` guard; delete the legacy presign route
 - [ ] **backend Phase 5** — split `auth.controller` from `user.controller`
-- [ ] **backend Phase 6** — `prisma migrate` cutover (`DATABASE_DESIGN.md` §8.2).
+- [x] **backend Phase 6** — `prisma migrate` cutover (baseline `0_init`, verified on a scratch DB, resolved on dev) (`DATABASE_DESIGN.md` §8.2).
       **Trigger: the first environment whose data we would be sorry to lose**
 - [ ] **Write `course-service/SYSTEM_DESIGN.md`** — it does not exist, and the
       split must not start without it. Open questions it has to answer:
@@ -215,6 +215,20 @@ Design: `backend/SYSTEM_DESIGN.md` Part IV (storage, contract, phases) and
       autocomplete, Problems, autosave draft, publish, timeline, rollback
 - [x] **U4 — preview, compare any two versions, theme tokens**
 - [ ] `npm run build` + Playwright: admin edits a label → publish → sidebar shows it; student gets redirected and 403
+
+## UI — visual design language
+
+Design: `frontend/SYSTEM_DESIGN.md` Part VIII. **Direction A · Studio agreed and built (28 Oct 2026).**
+Replaced the generated look (glass, gradient text, lime-on-black, fabricated stats and testimonials).
+
+- [x] **V0a** — semantic tokens, codemod over 44 files (300 replacements), `check-styles` in `npm run lint`
+- [x] **V0b** — UI-config **v2** (`mode` + `highlight`, migration, Jest), studio/theater tokens, Geist, primitives, player scoped dark; **live DB published to v3**
+- [x] **V1** — app shell, ⌘K palette, dashboard (student, instructor, empty), `lib/activity.ts` (Vitest), viewer light/dark toggle
+- [x] **V2** — landing + auth pages from config (features, instructor steps, FAQ, CTA, auth panel); no invented claims
+- [~] **V3** — course/lesson thumbnails + `coverVideoId` + random poster frame (backend/transcoder by agent; verify), covers, Explore
+- [x] **V4** — studio/admin/purchases restyled by codemod pass 2; `check-styles` bans blur, gradients, 2xl/3xl radius, `font-display`
+- [~] **In-app notification inbox** — `IN_APP` channel + `/notifications/inbox` (notification-service), bell popover (frontend)
+- [ ] **Push (FCM)** — waiting on a Firebase project: web config in `frontend/.env.local`, service-account JSON + `PUSH_ENABLED=true` in `notification-service/.env`
 
 ## P5 — Operability
 

@@ -5,8 +5,11 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toaster';
+import { LessonThumbnail } from '@/components/lesson-thumbnail';
 import { getApiErrorMessage, videosApi, type CourseVideo } from '@/lib/api';
+import { ThumbnailField } from './thumbnail-field';
 
 export function EditLessonDialog({
   video,
@@ -19,6 +22,7 @@ export function EditLessonDialog({
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +30,7 @@ export function EditLessonDialog({
     if (!video) return;
     setTitle(video.title);
     setDescription(video.description ?? '');
+    setThumbnail(video.thumbnail ?? null);
     setError(null);
   }, [video]);
 
@@ -47,27 +52,38 @@ export function EditLessonDialog({
 
   return (
     <Dialog open={Boolean(video)} onOpenChange={(o) => !o && !saving && onClose()}>
-      <DialogContent>
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Edit lesson</DialogTitle>
         </DialogHeader>
-        <DialogBody className="space-y-4">
+        <DialogBody className="space-y-5">
+          {video ? (
+            <ThumbnailField
+              target={{ kind: 'lesson', id: video.id }}
+              current={thumbnail}
+              automaticLabel={video.status === 'READY' ? 'A frame picked from the video' : 'A frame from the video, once it is processed'}
+              onChange={(key) => {
+                setThumbnail(key);
+                void onSaved();
+              }}
+              preview={<LessonThumbnail video={{ ...video, thumbnail }} className="aspect-video w-full" />}
+            />
+          ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-medium">Title</span>
             <Input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} disabled={saving} />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium">Description</span>
-            <textarea
+            <Textarea
               value={description}
               rows={4}
               maxLength={5000}
               onChange={(e) => setDescription(e.target.value)}
               disabled={saving}
-              className="flex w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:border-white/20 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             />
           </label>
-          {error ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p> : null}
+          {error ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>

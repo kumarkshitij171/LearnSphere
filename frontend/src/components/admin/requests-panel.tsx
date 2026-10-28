@@ -47,12 +47,12 @@ export function RequestsPanel({ onChange }: { onChange?: (pending: number) => vo
     }
   };
 
-  if (requests === null) return <Skeleton className="h-40 w-full rounded-2xl" />;
+  if (requests === null) return <Skeleton className="h-40 w-full rounded-[14px]" />;
   if (requests.length === 0) {
     return <EmptyState icon={<Inbox />} title="No pending requests" description="When students apply to teach, they appear here." />;
   }
   return (
-    <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-2xl border border-white/[0.08]">
+    <ul className="divide-y divide-border overflow-hidden rounded-[14px] border border-border">
       {requests.map((r) => (
         <li key={r.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
@@ -60,7 +60,7 @@ export function RequestsPanel({ onChange }: { onChange?: (pending: number) => vo
             <p className="text-xs text-muted-foreground">
               {r.user?.email} · applied {relativeTime(r.createdAt)}
             </p>
-            {r.message ? <p className="mt-1.5 rounded-lg bg-white/[0.03] px-3 py-2 text-sm text-foreground/85">{r.message}</p> : null}
+            {r.message ? <p className="mt-1.5 rounded-lg bg-foreground/[0.03] px-3 py-2 text-sm text-foreground/85">{r.message}</p> : null}
           </div>
           <div className="flex shrink-0 gap-2">
             <Button size="sm" variant="outline" onClick={() => act(r, 'reject')} disabled={busyId === r.id} className="gap-1.5">

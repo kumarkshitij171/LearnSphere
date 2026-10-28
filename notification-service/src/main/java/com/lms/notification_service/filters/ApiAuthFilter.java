@@ -23,15 +23,16 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * Two audiences. /api/v1/devices is called by browsers: any signed-in user, acting only for
- * themselves. Everything else under /api can send mail to anyone, so it needs an ADMIN token or
- * the internal API key another service holds. Runs after the tenant filter.
+ * Two audiences. /api/v1/devices and /api/v1/notifications/inbox are called by browsers: any
+ * signed-in user, acting only for themselves. Everything else under /api can send mail to anyone,
+ * so it needs an ADMIN token or the internal API key another service holds. Runs after the tenant filter.
  */
 @Component
 @Order(2)
 public class ApiAuthFilter extends OncePerRequestFilter {
 
     static final String DEVICES = "/api/v1/devices";
+    static final String INBOX = "/api/v1/notifications/inbox";
     static final String INTERNAL_KEY_HEADER = "X-Internal-Api-Key";
 
     private final AccessTokenVerifier verifier;
@@ -50,14 +51,14 @@ public class ApiAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        boolean deviceRoute = request.getRequestURI().startsWith(DEVICES);
+        boolean userRoute = isUserRoute(request.getRequestURI());
         Optional<CallerContext> caller = internalCaller(request).or(() -> userCaller(request));
 
         if (caller.isEmpty()) {
             reject(response, HttpStatus.UNAUTHORIZED, "Invalid or missing credentials");
             return;
         }
-        if (!deviceRoute && !caller.get().isAdmin()) {
+        if (!userRoute && !caller.get().isAdmin()) {
             reject(response, HttpStatus.FORBIDDEN, "Admin access required");
             return;
         }
@@ -67,6 +68,11 @@ public class ApiAuthFilter extends OncePerRequestFilter {
         } finally {
             CallerContextHolder.clear();
         }
+    }
+
+    // exact segments: /api/v1/notifications/inboxX is the admin history route for id "inboxX"
+    static boolean isUserRoute(String uri) {
+        return uri.startsWith(DEVICES) || uri.equals(INBOX) || uri.startsWith(INBOX + "/");
     }
 
     private Optional<CallerContext> internalCaller(HttpServletRequest request) {

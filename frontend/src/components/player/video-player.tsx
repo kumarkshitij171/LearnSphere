@@ -380,6 +380,7 @@ export function VideoPlayer({
     <div className={cn('flex w-full justify-center', className)}>
       <div
         ref={containerRef}
+        data-look="theater"
         tabIndex={0}
         aria-label={title ? `Video player: ${title}` : 'Video player'}
         onPointerMove={(e) => e.pointerType === 'mouse' && poke()}
@@ -445,7 +446,7 @@ export function VideoPlayer({
                 media.seek(0);
                 setResumedFrom(null);
               }}
-              className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
             >
               Start over
             </button>
@@ -464,7 +465,7 @@ export function VideoPlayer({
               <button
                 type="button"
                 onClick={retry}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-highlight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
               >
                 <RotateCcw className="h-4 w-4" /> Try again
               </button>
@@ -533,7 +534,7 @@ export function VideoPlayer({
               <Pill className="shrink-0">
                 {hasCaptions ? (
                   <ControlButton label={captionsOn ? 'Turn off captions' : 'Captions'} shortcut="c" pressed={captionsOn} onClick={toggleCaptions}>
-                    <Captions className={cn('h-5 w-5', captionsOn && 'text-primary')} />
+                    <Captions className={cn('h-5 w-5', captionsOn && 'text-highlight')} />
                   </ControlButton>
                 ) : null}
                 <div className="relative">

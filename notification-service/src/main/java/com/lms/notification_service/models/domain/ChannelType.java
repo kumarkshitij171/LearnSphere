@@ -4,5 +4,7 @@ public enum ChannelType {
     EMAIL,
     PUSH,
     SMS,
-    WEBHOOK
+    WEBHOOK,
+    // the inbox inside the app; needs no provider or browser permission
+    IN_APP
 }

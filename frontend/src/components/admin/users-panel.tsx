@@ -84,21 +84,21 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or email"
           aria-label="Search users"
-          className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+          className="h-10 w-full rounded-xl border border-border bg-foreground/[0.03] pl-9 pr-3 text-sm placeholder:text-muted-foreground/70 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
         />
       </label>
 
       {users === null ? (
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-[14px]" />
       ) : error ? (
         <EmptyState icon={<Users />} title="Users are unavailable" description={error} action={<Button variant="outline" onClick={load}>Try again</Button>} />
       ) : users.length === 0 ? (
         <EmptyState icon={<Users />} title="No users match" description={query ? `Nothing for “${query}”.` : undefined} />
       ) : (
-        <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-2xl border border-white/[0.08]">
+        <ul className="divide-y divide-border overflow-hidden rounded-[14px] border border-border">
           {users.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.02]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-lime-300/80 to-emerald-400/80 text-xs font-bold text-[#0A0A0F]">
+            <li key={u.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-foreground/[0.02]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-foreground/[0.08] text-xs font-semibold text-foreground">
                 {initials(u.name, u.email)}
               </span>
               <div className="min-w-0 flex-1">
@@ -118,7 +118,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   value={u.role}
                   onChange={(e) => changeRole(u, e.target.value as Role)}
                   aria-label={`Role for ${u.email}`}
-                  className="h-9 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  className="h-9 rounded-lg border border-border bg-foreground/[0.03] px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                 >
                   {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
                     <option key={r} value={r} className="bg-background">

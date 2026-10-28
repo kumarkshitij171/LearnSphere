@@ -1,5 +1,12 @@
+jest.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: jest.fn().mockResolvedValue('https://storage.example/signed'),
+}));
+
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
+import { mockClient } from 'aws-sdk-client-mock';
+import { DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { buildTestApp } from '../helpers/testApp';
 import { generateAccessToken } from '../../services/user.service';
 
@@ -77,7 +84,7 @@ describe('GET /courses/enrolled', () => {
     prisma.course.findMany.mockResolvedValue([{ id: 'c1' }]);
     const res = await request(app).get('/api/v1/courses/enrolled').set('Cookie', cookie('STUDENT'));
     expect(res.status).toBe(200);
-    expect(res.body.courses).toEqual([{ id: 'c1' }]);
+    expect(res.body.courses).toEqual([{ id: 'c1', coverVideoId: null }]);
     expect(prisma.course.findMany.mock.calls[0][0].where).toEqual({
       enrollments: { some: { userId: 'u1', revokedAt: null } },
     });
@@ -221,5 +228,120 @@ describe('GET /courses/:id curriculum and drafts', () => {
     prisma.course.findUnique.mockResolvedValue({ ...base, isPublished: false, instructorId: 'u1' });
     const res = await request(app).get('/api/v1/courses/c1').set('Cookie', cookie('INSTRUCTOR', 'u1'));
     expect(res.status).toBe(200);
+  });
+});
+
+describe('course thumbnail', () => {
+  const s3 = mockClient(S3Client);
+  const key = 'course-thumbnails/c1/0b5e7a2c-1d2f-4c3b-9a8e-123456789abc.png';
+  const previous = 'course-thumbnails/c1/1c6f8b3d-2e3a-4d4c-8b9f-23456789abcd.jpg';
+  const owned = { id: 'c1', instructorId: 'u1', thumbnail: previous };
+  const notFound = Object.assign(new Error('NotFound'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } });
+  const deletedKeys = () => s3.commandCalls(DeleteObjectCommand).map((c) => c.args[0].input.Key);
+
+  beforeEach(() => {
+    s3.reset();
+    s3.on(DeleteObjectCommand).resolves({});
+    prisma.course.update.mockResolvedValue({});
+  });
+  afterAll(() => s3.restore());
+
+  const presign = (contentType: unknown, id = 'u1') =>
+    request(app)
+      .post('/api/v1/courses/c1/thumbnail/presign')
+      .set('Cookie', cookie('INSTRUCTOR', id))
+      .send({ contentType });
+  const confirm = (body: object, id = 'u1') =>
+    request(app).put('/api/v1/courses/c1/thumbnail').set('Cookie', cookie('INSTRUCTOR', id)).send(body);
+
+  it('presigns an upload under the course folder for its owner', async () => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    const res = await presign('image/png');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      uploadUrl: 'https://storage.example/signed',
+      key: expect.stringMatching(/^course-thumbnails\/c1\/[0-9a-f-]{36}\.png$/),
+    });
+  });
+
+  it.each(['image/gif', 'image/svg+xml', undefined])('refuses to presign %p', async (contentType) => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    const res = await presign(contentType);
+    expect(res.status).toBe(400);
+    expect(getSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("refuses someone else's course with 403", async () => {
+    prisma.course.findUnique.mockResolvedValue({ ...owned, instructorId: 'other' });
+    expect((await presign('image/png')).status).toBe(403);
+    expect((await confirm({ key })).status).toBe(403);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
+
+  it('saves a good upload and deletes the image it replaces', async () => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 120_000, ContentType: 'image/png' });
+    const res = await confirm({ key });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, thumbnail: key });
+    expect(prisma.course.update.mock.calls[0][0]).toEqual({ where: { id: 'c1' }, data: { thumbnail: key } });
+    expect(deletedKeys()).toEqual([previous]);
+  });
+
+  it('refuses a key outside this course without deleting it', async () => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    const res = await confirm({ key: 'course-thumbnails/c2/0b5e7a2c-1d2f-4c3b-9a8e-123456789abc.png' });
+    expect(res.status).toBe(400);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+    expect(deletedKeys()).toEqual([]);
+  });
+
+  it('refuses an upload that never arrived', async () => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    s3.on(HeadObjectCommand).rejects(notFound);
+    expect((await confirm({ key })).status).toBe(400);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['too big', { ContentLength: 5 * 1024 * 1024 + 1, ContentType: 'image/png' }],
+    ['the wrong type', { ContentLength: 1000, ContentType: 'text/html' }],
+  ])('refuses and deletes an upload that is %s', async (_why, head) => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    s3.on(HeadObjectCommand).resolves(head);
+    expect((await confirm({ key })).status).toBe(400);
+    expect(prisma.course.update).not.toHaveBeenCalled();
+    expect(deletedKeys()).toEqual([key]);
+  });
+
+  it('removes the thumbnail', async () => {
+    prisma.course.findUnique.mockResolvedValue(owned);
+    const res = await request(app).delete('/api/v1/courses/c1/thumbnail').set('Cookie', cookie('INSTRUCTOR'));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    expect(prisma.course.update.mock.calls[0][0].data).toEqual({ thumbnail: null });
+    expect(deletedKeys()).toEqual([previous]);
+  });
+
+  it('serves the image publicly as a short-cached redirect to a signed URL', async () => {
+    prisma.course.findUnique.mockResolvedValue({ id: 'c1', thumbnail: key });
+    const res = await request(app).get('/api/v1/courses/c1/thumbnail');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('https://storage.example/signed');
+    expect(res.headers['cache-control']).toBe('public, max-age=300');
+    expect((getSignedUrl as jest.Mock).mock.calls[0][1].input).toEqual({ Bucket: 'course-assets', Key: key });
+  });
+
+  it.each([null, 'https://example.com/cover.png'])('answers 404 when the thumbnail is %p', async (thumbnail) => {
+    prisma.course.findUnique.mockResolvedValue({ id: 'c1', thumbnail });
+    const res = await request(app).get('/api/v1/courses/c1/thumbnail');
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('answers 404 for an unknown course', async () => {
+    prisma.course.findUnique.mockResolvedValue(null);
+    expect((await request(app).get('/api/v1/courses/nope/thumbnail')).status).toBe(404);
   });
 });

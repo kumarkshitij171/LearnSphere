@@ -5,12 +5,13 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toaster';
 import { coursesApi, getApiErrorMessage, type CourseDetail } from '@/lib/api';
+import { CourseCover } from '@/components/course-cover';
 import { PriceField, priceFromNumber, priceProblem, priceToNumber, type PriceValue } from './price-field';
+import { ThumbnailField } from './thumbnail-field';
 
-const TEXTAREA =
-  'flex w-full resize-none rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm placeholder:text-muted-foreground/60 transition-colors hover:border-white/20 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30';
 
 export function EditCourseDialog({
   course,
@@ -26,11 +27,13 @@ export function EditCourseDialog({
   const [title, setTitle] = useState(course.title);
   const [description, setDescription] = useState(course.description);
   const [price, setPrice] = useState<PriceValue>(priceFromNumber(course.price));
+  const [thumbnail, setThumbnail] = useState(course.thumbnail ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setThumbnail(course.thumbnail ?? null);
     setTitle(course.title);
     setDescription(course.description);
     setPrice(priceFromNumber(course.price));
@@ -69,32 +72,49 @@ export function EditCourseDialog({
           <DialogDescription>What students see in the catalogue and on the course page.</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-5">
+          <ThumbnailField
+            target={{ kind: 'course', id: course.id }}
+            current={thumbnail}
+            automaticLabel="A frame from your first ready lesson"
+            onChange={(key) => {
+              setThumbnail(key);
+              void onSaved();
+            }}
+            preview={
+              <CourseCover
+                id={course.id}
+                title={title || course.title}
+                thumbnail={thumbnail}
+                coverVideoId={course.videos.find((v) => v.status === 'READY')?.id ?? null}
+                className="aspect-video w-full"
+              />
+            }
+          />
           <label className="block space-y-2">
             <span className="text-sm font-medium">Title</span>
             <Input value={title} maxLength={150} onChange={(e) => setTitle(e.target.value)} disabled={saving} />
-            {title && titleProblem ? <span className="text-xs text-red-300">{titleProblem}</span> : null}
+            {title && titleProblem ? <span className="text-xs text-danger">{titleProblem}</span> : null}
           </label>
           <label className="block space-y-2">
             <span className="flex items-center justify-between text-sm font-medium">
               Description <span className="text-xs font-normal tabular-nums text-muted-foreground">{description.length}/5000</span>
             </span>
-            <textarea
+            <Textarea
               value={description}
               maxLength={5000}
               rows={5}
               onChange={(e) => setDescription(e.target.value)}
               disabled={saving}
-              className={TEXTAREA}
             />
-            {description && descriptionProblem ? <span className="text-xs text-red-300">{descriptionProblem}</span> : null}
+            {description && descriptionProblem ? <span className="text-xs text-danger">{descriptionProblem}</span> : null}
           </label>
           <PriceField value={price} onChange={setPrice} currency={course.currency} disabled={saving} />
           {course.isPublished && priceChanged ? (
-            <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-200 ring-1 ring-amber-400/20">
+            <p className="rounded-[10px] bg-warning/10 px-3 py-2 text-xs text-warning">
               This course is live. New buyers will pay the new price; students who already bought it keep their access.
             </p>
           ) : null}
-          {error ? <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/20">{error}</p> : null}
+          {error ? <p className="rounded-[10px] bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

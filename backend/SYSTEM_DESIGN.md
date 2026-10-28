@@ -652,7 +652,8 @@ fails.
 security-sensitive diff, and it is worth doing only once Phase 3 has proved the
 behaviour is pinned by tests.
 
-### Phase 6 — `prisma migrate` cutover
+### Phase 6 — `prisma migrate` cutover — ✅ done 28 Oct 2026
+Baseline `0_init` generated from the schema; verified by `migrate deploy` on a scratch database (diff empty), then `migrate resolve --applied 0_init` on the dev database.
 Baseline the current schema, `migrate resolve --applied`, switch CI to
 `migrate deploy`. Trigger and exact steps in `../DATABASE_DESIGN.md` §8.2.
 

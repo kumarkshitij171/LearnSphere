@@ -21,7 +21,7 @@ const versionRow = (version: number, config = defaults()) => ({
   config,
   checksum: checksumOf(config),
   message: `v${version}`,
-  schemaVersion: 1,
+  schemaVersion: 2,
 });
 
 beforeEach(() => {
@@ -176,12 +176,12 @@ describe('admin editing', () => {
 
   it('refuses to publish an invalid draft, listing the problems', async () => {
     const doc = defaults();
-    doc.theme.primary = 'red';
+    doc.theme.highlight = 'red';
     prisma.uiConfigDraft.findUnique.mockResolvedValue({ authorId: 'admin-1', baseVersion: 2, config: doc });
     const res = await request(app).post('/api/v1/admin/ui-config/publish').set('Cookie', ADMIN)
       .send({ baseVersion: 2, message: 'broken theme' });
     expect(res.status).toBe(400);
-    expect(res.body.problems[0].path).toBe('/theme/primary');
+    expect(res.body.problems[0].path).toBe('/theme/highlight');
     expect(prisma.uiConfigState.updateMany).not.toHaveBeenCalled();
   });
 

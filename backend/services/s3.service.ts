@@ -29,7 +29,7 @@ const createS3Client = () =>
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
 
-const s3Client = createS3Client();
+export const s3Client = createS3Client();
 const ensuredBuckets = new Set<string>();
 
 // Allow the browser to PUT directly to the bucket via presigned URLs.
@@ -59,7 +59,7 @@ const applyBucketCors = async (bucket: string) => {
 
 // Local convenience only. On AWS the buckets and their CORS are provisioned up front: names are
 // global, and the app's IAM role should not hold CreateBucket / PutBucketCORS.
-const ensureBucketExists = async (bucket: string) => {
+export const ensureBucketExists = async (bucket: string) => {
   if (!isLocalStack() || ensuredBuckets.has(bucket)) return;
 
   const region = process.env.AWS_REGION || 'us-east-1';

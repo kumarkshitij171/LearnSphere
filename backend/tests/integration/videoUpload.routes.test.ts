@@ -236,3 +236,115 @@ describe('replace and retry a lesson', () => {
     expect(publishVideoUploaded).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('lesson thumbnail', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { mockClient } = require('aws-sdk-client-mock');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { S3Client, HeadObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+  const key = 'lesson-thumbnails/vid-1/0b5e7a2c-1d2f-4c3b-9a8e-123456789abc.webp';
+  const previous = 'lesson-thumbnails/vid-1/1c6f8b3d-2e3a-4d4c-8b9f-23456789abcd.png';
+  const lesson = { id: 'vid-1', userId: 'u1', courseId: 'c1', thumbnail: previous };
+  // created here rather than at collection time, so it does not displace the mock of the block above
+  let s3: any;
+  const deletedKeys = () => s3.commandCalls(DeleteObjectCommand).map((c: any) => c.args[0].input.Key);
+
+  beforeAll(() => {
+    s3 = mockClient(S3Client);
+  });
+  afterAll(() => s3.restore());
+  beforeEach(() => {
+    s3.reset();
+    s3.on(DeleteObjectCommand).resolves({});
+    prisma.video.update.mockResolvedValue({});
+  });
+
+  const presign = (contentType: unknown, id = 'u1') =>
+    request(app)
+      .post('/api/v1/video-upload/vid-1/thumbnail/presign')
+      .set('Cookie', cookie('INSTRUCTOR', id))
+      .send({ contentType });
+  const confirm = (body: object, id = 'u1') =>
+    request(app).put('/api/v1/video-upload/vid-1/thumbnail').set('Cookie', cookie('INSTRUCTOR', id)).send(body);
+
+  it('presigns an upload under the lesson folder for its owner', async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    const res = await presign('image/webp');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.uploadUrl).toBe('https://storage.example/signed-upload');
+    expect(res.body.key).toMatch(/^lesson-thumbnails\/vid-1\/[0-9a-f-]{36}\.webp$/);
+  });
+
+  it('refuses to presign a type it does not serve', async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    expect((await presign('image/gif')).status).toBe(400);
+  });
+
+  it("refuses someone else's lesson with 403", async () => {
+    prisma.video.findUnique.mockResolvedValue({ ...lesson, userId: 'other' });
+    expect((await presign('image/png')).status).toBe(403);
+    expect((await confirm({ key })).status).toBe(403);
+    expect(prisma.video.update).not.toHaveBeenCalled();
+  });
+
+  it('saves a good upload and deletes the image it replaces', async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 80_000, ContentType: 'image/webp' });
+    const res = await confirm({ key });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, thumbnail: key });
+    expect(prisma.video.update.mock.calls[0][0]).toEqual({ where: { id: 'vid-1' }, data: { thumbnail: key } });
+    expect(deletedKeys()).toEqual([previous]);
+  });
+
+  it("refuses another lesson's key without deleting it", async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    const res = await confirm({ key: 'lesson-thumbnails/vid-2/0b5e7a2c-1d2f-4c3b-9a8e-123456789abc.webp' });
+    expect(res.status).toBe(400);
+    expect(prisma.video.update).not.toHaveBeenCalled();
+    expect(deletedKeys()).toEqual([]);
+  });
+
+  it('refuses and deletes an upload that is too big', async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 6 * 1024 * 1024, ContentType: 'image/webp' });
+    expect((await confirm({ key })).status).toBe(400);
+    expect(deletedKeys()).toEqual([key]);
+  });
+
+  it('removes the thumbnail', async () => {
+    prisma.video.findUnique.mockResolvedValue(lesson);
+    const res = await request(app).delete('/api/v1/video-upload/vid-1/thumbnail').set('Cookie', cookie('INSTRUCTOR'));
+    expect(res.status).toBe(200);
+    expect(prisma.video.update.mock.calls[0][0].data).toEqual({ thumbnail: null });
+    expect(deletedKeys()).toEqual([previous]);
+  });
+
+  it('serves the image publicly as a short-cached redirect to a signed URL', async () => {
+    prisma.video.findUnique.mockResolvedValue({ id: 'vid-1', thumbnail: key });
+    const res = await request(app).get('/api/v1/video-upload/vid-1/thumbnail');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('https://storage.example/signed-upload');
+    expect(res.headers['cache-control']).toBe('public, max-age=300');
+    expect((getSignedUrl as jest.Mock).mock.calls[0][1].input).toEqual({ Bucket: 'course-assets', Key: key });
+  });
+
+  it('answers 404 without auth when the lesson uses the poster', async () => {
+    prisma.video.findUnique.mockResolvedValue({ id: 'vid-1', thumbnail: null });
+    const res = await request(app).get('/api/v1/video-upload/vid-1/thumbnail');
+    expect(res.status).toBe(404);
+  });
+
+  it('deletes the thumbnail with the lesson', async () => {
+    prisma.video.findUnique.mockResolvedValue({ ...lesson, originalKey: 'vid-1/original.mp4' });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    s3.on(ListObjectsV2Command).resolves({ Contents: [] });
+    const res = await request(app).delete('/api/v1/video-upload/vid-1').set('Cookie', cookie('INSTRUCTOR'));
+    expect(res.status).toBe(200);
+    expect(deletedKeys()).toEqual(expect.arrayContaining(['vid-1/original.mp4', previous]));
+  });
+});

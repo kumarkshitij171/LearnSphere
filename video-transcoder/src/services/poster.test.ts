@@ -8,13 +8,40 @@ import { extractPoster, posterTime } from './poster.js';
 import { contentTypeFor } from './s3.service.js';
 import { ffmpegPath, ffprobePath } from '../config/ffmpeg.js';
 
-test('the poster is taken about 10% in, at least 1 s, and never past the end', () => {
-  assert.equal(posterTime(60), 6);
-  assert.equal(posterTime(3600), 360);
-  assert.equal(posterTime(5), 1);
-  assert.equal(posterTime(1), 0.5);
-  assert.equal(posterTime(0.4), 0.2);
-  assert.equal(posterTime(0), 0); // duration unknown: the first frame
+const ids = Array.from({ length: 200 }, (_, i) => `lesson-${i}`);
+
+test('the poster time is the same every time for the same video, so a retry takes the same frame', () => {
+  for (const id of ['3f2b8c1e-0d4a-4b6f-9e21-7a5c3d9e8f10', 'lesson-7', '']) {
+    assert.equal(posterTime(600, id), posterTime(600, id));
+  }
+});
+
+test('the poster lands anywhere in 15–75% of the video, spread across videos', () => {
+  const fractions = ids.map((id) => posterTime(1000, id) / 1000);
+  for (const f of fractions) assert.ok(f >= 0.15 && f <= 0.75, `${f} outside 15–75%`);
+  assert.ok(Math.min(...fractions) < 0.2, 'nothing near the start of the range');
+  assert.ok(Math.max(...fractions) > 0.7, 'nothing near the end of the range');
+  // a fifth of the range each: none empty, none hogging the ids
+  const buckets = [0, 0, 0, 0, 0];
+  for (const f of fractions) buckets[Math.min(4, Math.floor(((f - 0.15) / 0.6) * 5))]! += 1;
+  for (const n of buckets) assert.ok(n > 20 && n < 70, `uneven spread: ${buckets.join(', ')}`);
+  assert.ok(new Set(fractions).size > 190, 'different videos should get different frames');
+});
+
+test('the poster is never within 1 s of either end', () => {
+  for (const duration of [3, 3.5, 4, 5, 6, 10]) {
+    for (const id of ids) {
+      const at = posterTime(duration, id);
+      assert.ok(at >= 1 && at <= duration - 1, `${at}s in a ${duration}s clip`);
+    }
+  }
+});
+
+test('a clip under 3 s gets its middle, and an unknown duration the first frame', () => {
+  assert.equal(posterTime(2.9, 'a'), 1.45);
+  assert.equal(posterTime(1, 'a'), 0.5);
+  assert.equal(posterTime(0.4, 'b'), 0.2);
+  assert.equal(posterTime(0, 'c'), 0);
 });
 
 test('the poster is uploaded as a JPEG', () => {

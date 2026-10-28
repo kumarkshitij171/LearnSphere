@@ -156,7 +156,7 @@ const appendVersion = async (args: {
   base: number;
   config: unknown;
   message: string;
-  createdById: string;
+  createdById: string | null;
   rollbackOf?: number;
   deleteDraftOf?: string;
 }) => {
@@ -225,4 +225,23 @@ export const rollbackTo = async (authorId: string, toVersion: number, message: s
     rollbackOf: toVersion,
   });
   return { ok: true as const, version };
+};
+
+/**
+ * Publishes the checked-in default as a new version (history kept; the editor can roll back).
+ * Run by `npm run ui-config:publish-default` when a release changes the default, never by the server.
+ */
+export const publishCheckedInDefault = async (message: string) => {
+  const config = readDefaultConfig();
+  const result = validateUiConfig(config);
+  if (!result.ok) throw new InvalidConfigError(result.problems);
+  const state = await prisma.uiConfigState.findUnique({ where: { id: STATE_ID } });
+  if (!state) {
+    await ensureUiConfigSeeded();
+    return { version: 1, unchanged: false };
+  }
+  const live = await prisma.uiConfigVersion.findUnique({ where: { version: state.publishedVersion } });
+  if (live?.checksum === checksumOf(config)) return { version: state.publishedVersion, unchanged: true };
+  const version = await appendVersion({ base: state.publishedVersion, config, message, createdById: null });
+  return { version, unchanged: false };
 };

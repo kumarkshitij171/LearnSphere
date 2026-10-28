@@ -41,14 +41,14 @@ export function UpNext({
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
           >
             <X className="h-4 w-4" /> Cancel
           </button>
           <button
             type="button"
             onClick={onPlay}
-            className="relative grid h-14 w-14 place-items-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="relative grid h-14 w-14 place-items-center rounded-full text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-highlight"
             aria-label={`Play now: ${title}`}
           >
             <svg className="absolute inset-0 -rotate-90" viewBox="0 0 56 56" aria-hidden>
@@ -58,7 +58,7 @@ export function UpNext({
                 cy="28"
                 r={r}
                 fill="none"
-                stroke="hsl(var(--primary))"
+                stroke="hsl(var(--highlight))"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeDasharray={circumference}
