@@ -1,16 +1,18 @@
 package com.lms.notification_service.exception;
 
-public class ValidationException extends RuntimeException implements AbstractException{
+import org.springframework.http.HttpStatus;
 
-    private Integer statusCode;
+public class ValidationException extends RuntimeException implements AbstractException {
 
-    public ValidationException(String message){
-        super(message);
+    private final int statusCode;
+
+    public ValidationException(String message) {
+        this(message, HttpStatus.BAD_REQUEST.value());
     }
 
-    public ValidationException(String message, Integer statusCode){
+    public ValidationException(String message, Integer statusCode) {
         super(message);
-        this.statusCode=statusCode;
+        this.statusCode = statusCode == null ? HttpStatus.BAD_REQUEST.value() : statusCode;
     }
 
     @Override

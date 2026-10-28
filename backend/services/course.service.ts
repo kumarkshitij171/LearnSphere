@@ -1,5 +1,6 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma, EnrollmentSource } from '@prisma/client';
 import { deleteVideoS3Artifacts } from './s3.service';
+import { removeThumbnail } from './asset.service';
 
 const prisma = new PrismaClient();
 
@@ -9,7 +10,6 @@ export interface CreateCourseInput {
   title: string;
   description: string;
   price?: number;
-  thumbnail?: string;
 }
 
 export const createCourse = (instructorId: string, input: CreateCourseInput) =>
@@ -18,24 +18,64 @@ export const createCourse = (instructorId: string, input: CreateCourseInput) =>
       title: input.title,
       description: input.description,
       price: input.price ?? 0,
-      thumbnail: input.thumbnail ?? null,
       instructorId,
     },
   });
 
-export const listPublishedCourses = () =>
-  prisma.course.findMany({
-    where: { isPublished: true },
-    orderBy: { createdAt: 'desc' },
-    include: { instructor: { select: instructorSelect }, _count: { select: { videos: true } } },
-  });
+// What a student counts as "lessons" is what they can watch: processing and failed videos are not.
+const readyLessonCount = { videos: { where: { status: 'READY' as const } } };
 
-export const listMyCourses = (instructorId: string) =>
-  prisma.course.findMany({
-    where: { instructorId },
-    orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { videos: true, enrollments: true } } },
-  });
+// The first ready lesson's poster is the cover of a course without a thumbnail of its own.
+const firstReadyLesson = {
+  where: { status: 'READY' as const },
+  orderBy: { createdAt: 'asc' as const },
+  take: 1,
+  select: { id: true },
+};
+
+const withCoverVideoId = <T extends { videos?: { id: string }[] }>(courses: T[]) =>
+  courses.map(({ videos, ...course }) => ({ ...course, coverVideoId: videos?.[0]?.id ?? null }));
+
+// A published course with nothing ready to watch (every lesson deleted or failed) stays out of the
+// catalogue rather than being sold empty.
+export const listPublishedCourses = async () =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { isPublished: true, videos: { some: { status: 'READY' } } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: readyLessonCount },
+        videos: firstReadyLesson,
+      },
+    })
+  );
+
+/** Every course, drafts included, for the admin console — with who made it and how it is doing. */
+export const listAllCourses = async () =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
+        videos: firstReadyLesson,
+      },
+    })
+  );
+
+export const listMyCourses = async (instructorId: string) =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { instructorId },
+      orderBy: { createdAt: 'desc' },
+      // the instructor sees every lesson they made; students counted are the ones with access today
+      include: {
+        _count: { select: { videos: true, enrollments: { where: { revokedAt: null } } } },
+        videos: firstReadyLesson,
+      },
+    })
+  );
 
 export const getCourseById = (courseId: string, opts: { withVideos?: boolean } = {}) =>
   prisma.course.findUnique({
@@ -48,15 +88,44 @@ export const getCourseById = (courseId: string, opts: { withVideos?: boolean } =
     },
   });
 
+export const findCourseThumbnail = (courseId: string) =>
+  prisma.course.findUnique({ where: { id: courseId }, select: { id: true, thumbnail: true } });
+
+export const countReadyVideos = (courseId: string) =>
+  prisma.video.count({ where: { courseId, status: 'READY' } });
+
+// Lean projection for order-service: only the fields an order snapshots.
+export const getCourseForCatalogue = (courseId: string) =>
+  prisma.course.findUnique({
+    where: { id: courseId },
+    select: {
+      id: true,
+      title: true,
+      price: true,
+      currency: true,
+      isPublished: true,
+      instructorId: true,
+    },
+  });
+
+// Entitlement lookup for order-service. A revoked row is kept for history but
+// must read as "not enrolled", so a refunded buyer can purchase again.
+export const getEnrollment = (userId: string, courseId: string) =>
+  prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId } },
+    select: { id: true, orderId: true, source: true, enrolledAt: true, revokedAt: true },
+  });
+
 export const updateCourse = (courseId: string, data: Prisma.CourseUpdateInput) =>
   prisma.course.update({ where: { id: courseId }, data });
 
 // Cascade: drop the course's videos (+ transcode jobs) and enrollments, then
-// best-effort clean up each video's S3 artifacts.
+// best-effort clean up each video's S3 artifacts and every thumbnail.
 export const deleteCourse = async (courseId: string) => {
+  const course = await findCourseThumbnail(courseId);
   const videos = await prisma.video.findMany({
     where: { courseId },
-    select: { id: true, originalKey: true },
+    select: { id: true, originalKey: true, thumbnail: true },
   });
   const videoIds = videos.map((v) => v.id);
 
@@ -69,25 +138,77 @@ export const deleteCourse = async (courseId: string) => {
     prisma.course.delete({ where: { id: courseId } }),
   ]);
 
-  await Promise.allSettled(videos.map((v) => deleteVideoS3Artifacts(v.originalKey, v.id)));
+  await Promise.allSettled([
+    removeThumbnail('course', courseId, course?.thumbnail),
+    ...videos.map((v) => deleteVideoS3Artifacts(v.originalKey, v.id)),
+    ...videos.map((v) => removeThumbnail('lesson', v.id, v.thumbnail)),
+  ]);
 };
 
-export const enrollInCourse = async (userId: string, courseId: string) => {
+export interface EnrollOptions {
+  source?: EnrollmentSource;
+  orderId?: string;
+}
+
+// Idempotent: upsert on (userId, courseId). Re-granting clears a revocation, so a buyer refunded
+// earlier who purchases again gets access back.
+export const enrollInCourse = async (userId: string, courseId: string, opts: EnrollOptions = {}) => {
   const course = await prisma.course.findUnique({ where: { id: courseId } });
   if (!course) return { ok: false as const, reason: 'NOT_FOUND' as const };
 
-  // Idempotent: upsert on the (userId, courseId) unique constraint.
+  const provenance = {
+    ...(opts.source ? { source: opts.source } : {}),
+    ...(opts.orderId ? { orderId: opts.orderId } : {}),
+  };
   const enrollment = await prisma.enrollment.upsert({
     where: { userId_courseId: { userId, courseId } },
-    update: {},
-    create: { userId, courseId },
+    update: { revokedAt: null, ...provenance },
+    create: { userId, courseId, ...provenance },
   });
   return { ok: true as const, enrollment };
 };
 
+// Grant from a paid order. A redelivered order.paid for an order that was since refunded must
+// not resurrect access, so a revocation made against the same order wins.
+export const grantFromOrder = async (userId: string, courseId: string, orderId: string) => {
+  const existing = await getEnrollment(userId, courseId);
+  if (existing?.revokedAt && existing.orderId === orderId) {
+    return { ok: false as const, reason: 'REVOKED_FOR_THIS_ORDER' as const };
+  }
+  if (existing && !existing.revokedAt) return { ok: true as const, enrollment: existing };
+  return enrollInCourse(userId, courseId, { source: 'PURCHASE', orderId });
+};
+
+// Revoke only what this order granted: an admin grant or a later purchase is left alone.
+export const revokeFromOrder = async (userId: string, courseId: string, orderId: string) => {
+  const existing = await getEnrollment(userId, courseId);
+  if (!existing || existing.orderId !== orderId || existing.revokedAt) {
+    return { ok: false as const, reason: 'NOT_GRANTED_BY_ORDER' as const };
+  }
+  const enrollment = await prisma.enrollment.update({
+    where: { userId_courseId: { userId, courseId } },
+    data: { revokedAt: new Date() },
+  });
+  return { ok: true as const, enrollment };
+};
+
+// A revoked row is history, not access.
 export const isEnrolled = async (userId: string, courseId: string) => {
   const found = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId, courseId } },
   });
-  return !!found;
+  return !!found && !found.revokedAt;
 };
+
+export const listEnrolledCourses = async (userId: string) =>
+  withCoverVideoId(
+    await prisma.course.findMany({
+      where: { enrollments: { some: { userId, revokedAt: null } } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        instructor: { select: instructorSelect },
+        _count: { select: readyLessonCount },
+        videos: firstReadyLesson,
+      },
+    })
+  );

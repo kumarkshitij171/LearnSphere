@@ -1,42 +1,51 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { cookies } from "next/headers";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { loadUiConfig } from "@/lib/ui-config/server";
+import { UiConfigProvider, themeLook, themeVars } from "@/lib/ui-config";
+import { AnnouncementBanner } from "@/components/announcement-banner";
+import { AppProviders } from "@/components/providers";
+import { LOOK_BOOT_SCRIPT, LOOK_COOKIE, parsePreference } from "@/lib/look";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-});
+// Next dedupes this fetch with the one in RootLayout.
+export async function generateMetadata(): Promise<Metadata> {
+  const { config } = await loadUiConfig();
+  return {
+    title: `${config.branding.appName} — ${config.branding.tagline}`,
+    description: config.home.hero.subtitle,
+  };
+}
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  display: "swap",
-});
-
-export const metadata: Metadata = {
-  title: "LearnSphere — Learn without limits",
-  description:
-    "LearnSphere is a modern learning platform to create, manage and grow with expert-led courses.",
-};
-
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read on the server so the look and highlight are right on first paint, not swapped in after hydration.
+  const { config } = await loadUiConfig();
+  // an explicit light/dark choice renders right on the server; "system" is settled by the boot script
+  const pref = parsePreference(cookies().get(LOOK_COOKIE)?.value);
+  const look = pref === "dark" ? "theater" : pref === "light" ? "studio" : themeLook(config.theme);
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans`}
-      >
-        {children}
+    <html
+      lang="en"
+      data-look={look}
+      suppressHydrationWarning
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      style={themeVars(config.theme) as React.CSSProperties}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: LOOK_BOOT_SCRIPT }} />
+      </head>
+      <body className="font-sans">
+        <UiConfigProvider config={config}>
+          <AppProviders>
+            <AnnouncementBanner />
+            {children}
+          </AppProviders>
+        </UiConfigProvider>
       </body>
     </html>
   );

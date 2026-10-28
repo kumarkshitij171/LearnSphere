@@ -34,3 +34,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# copied from node_modules/monaco-editor by scripts/copy-monaco.mjs
+/public/monaco
+.next-build/

@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 2,
+  "branding": {
+    "appName": "LearnSphere",
+    "wordmark": {
+      "primary": "Learn",
+      "accent": "Sphere"
+    },
+    "tagline": "Video courses that remember your place",
+    "logoUrl": null,
+    "supportEmail": "support@learnsphere.dev"
+  },
+  "theme": {
+    "mode": "light",
+    "highlight": "50 100% 65%",
+    "radius": "0.625rem"
+  },
+  "navigation": {
+    "sidebar": [
+      {
+        "id": "home",
+        "label": "Home",
+        "icon": "LayoutDashboard",
+        "href": "/dashboard",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "explore",
+        "label": "Explore",
+        "icon": "Compass",
+        "href": "/explore",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "purchases",
+        "label": "Purchases",
+        "icon": "Receipt",
+        "href": "/orders",
+        "roles": [],
+        "enabled": true
+      },
+      {
+        "id": "studio",
+        "label": "Studio",
+        "icon": "GraduationCap",
+        "href": "/studio",
+        "roles": [
+          "INSTRUCTOR",
+          "ADMIN"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "admin",
+        "label": "Admin",
+        "icon": "ShieldCheck",
+        "href": "/admin",
+        "roles": [
+          "ADMIN"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "ui-config",
+        "label": "UI Config",
+        "icon": "SlidersHorizontal",
+        "href": "/admin/ui-config",
+        "roles": [
+          "ADMIN"
+        ],
+        "enabled": true
+      }
+    ],
+    "sidebarBottom": []
+  },
+  "home": {
+    "hero": {
+      "eyebrow": "Video courses that remember your place",
+      "title": "Every lesson, sharp up to 4K.",
+      "titleHighlight": "Right where you left off.",
+      "subtitle": "Lessons stream at the best quality your connection can hold, pick up at the second you stopped, and play with the keyboard shortcuts you already know.",
+      "ctaLabel": "Start learning",
+      "ctaHref": "/signup",
+      "secondaryLabel": "Teach on LearnSphere",
+      "secondaryHref": "/#teach",
+      "footnote": "Free to join · Pay per course in ₹ or $"
+    },
+    "sections": [
+      {
+        "type": "features",
+        "enabled": true
+      },
+      {
+        "type": "howItWorks",
+        "enabled": true
+      },
+      {
+        "type": "faq",
+        "enabled": true
+      },
+      {
+        "type": "finalCta",
+        "enabled": true
+      }
+    ],
+    "features": {
+      "eyebrow": "What you get",
+      "heading": {
+        "title": "Built for watching.",
+        "titleHighlight": "And for coming back."
+      },
+      "items": [
+        {
+          "icon": "MonitorPlay",
+          "title": "Sharp at any speed",
+          "body": "Every lesson is encoded into a ladder of qualities up to 4K. The player picks the best one your connection can hold and switches without stopping."
+        },
+        {
+          "icon": "History",
+          "title": "Resume to the second",
+          "body": "Close the tab halfway through a lesson. Next time it opens where you stopped, and your dashboard shows what comes next."
+        },
+        {
+          "icon": "Keyboard",
+          "title": "Shortcuts you already know",
+          "body": "Space or K to pause, J and L to skip ten seconds, F for fullscreen, T for theater mode. The same keys as YouTube."
+        },
+        {
+          "icon": "Wallet",
+          "title": "Pay per course",
+          "body": "No subscription. Buy a course once, in rupees or dollars. Free courses need no card."
+        },
+        {
+          "icon": "Mail",
+          "title": "Receipts by email",
+          "body": "Every purchase sends a receipt to your inbox, and your history is always under Purchases."
+        },
+        {
+          "icon": "ListChecks",
+          "title": "Progress you can trust",
+          "body": "A lesson counts as watched once you have played 90% of it. Nothing is counted that you didn't watch."
+        }
+      ]
+    },
+    "howItWorks": {
+      "eyebrow": "For instructors",
+      "heading": {
+        "title": "Upload the video.",
+        "titleHighlight": "We handle the rest."
+      },
+      "steps": [
+        {
+          "title": "Create a course",
+          "body": "Give it a title, a description and a price, or make it free."
+        },
+        {
+          "title": "Add lessons",
+          "body": "Upload one video per lesson. Each is encoded for every screen size, with a poster frame, while you keep working."
+        },
+        {
+          "title": "Publish",
+          "body": "A checklist confirms every lesson is ready. Publish, and the course appears in the catalogue."
+        }
+      ]
+    },
+    "faq": {
+      "heading": {
+        "title": "Questions.",
+        "titleHighlight": ""
+      },
+      "items": [
+        {
+          "question": "Do I need a subscription?",
+          "answer": "No. Each course has its own price, and free courses cost nothing. You pay once for a course."
+        },
+        {
+          "question": "How do I pay?",
+          "answer": "Paid courses check out through our payment partner. You get an email receipt, and the purchase appears under Purchases."
+        },
+        {
+          "question": "What happens if my connection drops?",
+          "answer": "The player lowers the quality instead of stopping, then climbs back up when the connection recovers."
+        },
+        {
+          "question": "Can I watch on my phone?",
+          "answer": "Yes. Lessons play in any modern browser, including Safari on iPhone and iPad."
+        },
+        {
+          "question": "How do I start teaching?",
+          "answer": "Create an account, then request instructor access from your dashboard. Once an admin approves it, Studio appears in your sidebar."
+        }
+      ]
+    },
+    "finalCta": {
+      "heading": {
+        "title": "Your next lesson",
+        "titleHighlight": "is one click away."
+      },
+      "body": "Create an account and browse the catalogue.",
+      "ctaLabel": "Create free account",
+      "ctaHref": "/signup"
+    }
+  },
+  "auth": {
+    "heading": {
+      "title": "Learn at your pace.",
+      "titleHighlight": "Pick up where you left off."
+    },
+    "points": [
+      "Lessons stream up to 4K and adapt to your connection",
+      "Your place in every lesson is saved",
+      "Pay per course. No subscription"
+    ]
+  },
+  "features": {
+    "purchases": true,
+    "instructorRequests": true,
+    "studyProgress": true
+  },
+  "copy": {
+    "courseLocked": "Buy this course to watch it.",
+    "purchasesPaused": "Purchases are paused right now. Please check back soon.",
+    "emptyCatalogue": "No published courses yet. Check back soon."
+  },
+  "announcement": {
+    "enabled": false,
+    "message": "",
+    "tone": "info",
+    "href": null
+  }
+}

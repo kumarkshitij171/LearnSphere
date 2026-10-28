@@ -46,3 +46,23 @@ describe('PATCH /admin/users/:id/role', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('GET /admin/courses', () => {
+  it('lists every course, drafts included, for an admin', async () => {
+    prisma.course.findMany.mockResolvedValue([
+      { id: 'c1', title: 'Live', isPublished: true },
+      { id: 'c2', title: 'Draft', isPublished: false },
+    ]);
+    const res = await request(app).get('/api/v1/admin/courses').set('Cookie', adminCookie());
+    expect(res.status).toBe(200);
+    expect(res.body.courses).toHaveLength(2);
+    const args = prisma.course.findMany.mock.calls[prisma.course.findMany.mock.calls.length - 1][0];
+    expect(args.where).toBeUndefined();
+  });
+
+  it('is admin only', async () => {
+    const instructor = `access_token=${generateAccessToken({ id: 'i1', email: 'i1@x.com', role: 'INSTRUCTOR' } as any)}`;
+    const res = await request(app).get('/api/v1/admin/courses').set('Cookie', instructor);
+    expect(res.status).toBe(403);
+  });
+});

@@ -1,0 +1,13 @@
+{
+  "name": "payment-failed",
+  "channel": "EMAIL",
+  "subject": "Your payment for {{courseTitle}} did not go through",
+  "templateVariables": {
+    "name": "there",
+    "courseTitle": null,
+    "amount": null,
+    "orderId": null,
+    "reason": "The payment was declined"
+  },
+  "templateMessage": "<div style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111\"><h2>Hi {{name}}, your payment didn't go through</h2><p>We couldn't complete your payment of <b>{{amount}}</b> for <b>{{courseTitle}}</b>.</p><p style=\"color:#555\">Reason: {{reason}}</p><p>No money was taken for this attempt. You can retry from the course page, with the same or a different payment method.</p><p style=\"color:#888;font-size:12px\">Order {{orderId}} — LearnSphere</p></div>"
+}

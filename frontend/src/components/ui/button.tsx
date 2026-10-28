@@ -4,26 +4,23 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+// Studio: the action colour is ink, every button is a pill, and nothing glows (Part VIII §30.6).
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary font-semibold text-primary-foreground shadow-[0_0_24px_-6px_hsl(var(--primary)/0.55)] hover:bg-primary/90 hover:shadow-[0_0_32px_-4px_hsl(var(--primary)/0.7)]",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline:
-          "border border-white/15 bg-white/5 text-foreground backdrop-blur hover:border-white/25 hover:bg-white/10",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-border bg-background text-foreground hover:bg-surface",
+        secondary: "bg-surface text-foreground hover:bg-foreground/[0.08]",
+        ghost: "text-body hover:bg-surface hover:text-foreground",
+        link: "rounded-none px-0 text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-12 rounded-lg px-8",
+        default: "h-10 px-[18px]",
+        sm: "h-8 px-3.5 text-[13px]",
+        lg: "h-12 px-6 text-[15px]",
         icon: "h-10 w-10",
       },
     },

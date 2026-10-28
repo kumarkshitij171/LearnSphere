@@ -1,265 +1,119 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Globe,
-  Pencil,
-  Trash2,
-  Play,
-  Save,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { ArrowLeft, Eye, Globe, Loader2, MoreHorizontal, Pencil, Plus, Trash2, UploadCloud, Video } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
-import { VideoUpload } from '@/components/video-upload';
-import { HlsPlayer } from '@/lib/player';
-import { masterPlaylistUrl } from '@/lib/playback';
-import { useRequireRole } from '@/hooks/useRequireAuth';
+import { CourseCover } from '@/components/course-cover';
+import { AddLessonDialog } from '@/components/studio/add-lesson-dialog';
+import { EditCourseDialog } from '@/components/studio/edit-course-dialog';
+import { EditLessonDialog } from '@/components/studio/edit-lesson-dialog';
+import { LessonRow, type LessonActions } from '@/components/studio/lesson-row';
+import { PublishChecklist, publishChecklist } from '@/components/studio/publish-checklist';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
-  coursesApi,
-  videosApi,
-  getApiErrorMessage,
-  type CourseDetail,
-  type CourseVideo,
-} from '@/lib/api';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toaster';
+import { useRequireRole } from '@/hooks/useRequireAuth';
+import { coursesApi, getApiErrorMessage, videosApi, type CourseDetail, type CourseVideo } from '@/lib/api';
+import { courseLength, pluralize } from '@/lib/format';
+import { failureCopy, isProcessing } from '@/lib/lesson-status';
+import { formatPrice } from '@/lib/money';
 
-const TEXTAREA_CLS =
-  'flex w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-foreground ring-offset-background transition-colors placeholder:text-muted-foreground hover:border-white/20 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50';
+const POLL_MS = 5000;
 
-function StatusPill({ status }: { status: CourseVideo['status'] }) {
-  const map = {
-    READY: { icon: CheckCircle2, cls: 'text-emerald-300', label: 'Ready' },
-    FAILED: { icon: XCircle, cls: 'text-destructive', label: 'Failed' },
-    TRANSCODING: { icon: Loader2, cls: 'text-amber-300 animate-spin', label: 'Transcoding' },
-    UPLOADED: { icon: Clock, cls: 'text-sky-300', label: 'Queued' },
-  }[status];
-  const Icon = map.icon;
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <Icon className={`h-4 w-4 ${map.cls}`} /> {map.label}
-    </span>
-  );
-}
-
-function VideoRow({ video, onChanged }: { video: CourseVideo; onChanged: () => Promise<void> | void }) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(video.title);
-  const [description, setDescription] = useState(video.description ?? '');
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showPlayer, setShowPlayer] = useState(false);
-  const [rowError, setRowError] = useState<string | null>(null);
-
-  const save = async () => {
-    setSaving(true);
-    setRowError(null);
-    try {
-      await videosApi.update(video.id, { title: title.trim(), description: description.trim() });
-      setEditing(false);
-      await onChanged();
-    } catch (e) {
-      setRowError(getApiErrorMessage(e, 'Could not update the video.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remove = async () => {
-    if (!window.confirm(`Delete "${video.title}"? This removes the video and its files permanently.`)) return;
-    setDeleting(true);
-    setRowError(null);
-    try {
-      await videosApi.remove(video.id);
-      await onChanged();
-    } catch (e) {
-      setRowError(getApiErrorMessage(e, 'Could not delete the video.'));
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <div className="rounded-lg border border-white/10 px-4 py-3">
-      {editing ? (
-        <div className="space-y-2">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Video title" />
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Description (optional)"
-            rows={2}
-            className={TEXTAREA_CLS}
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={save} disabled={saving || !title.trim()} className="gap-1.5">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditing(false);
-                setTitle(video.title);
-                setDescription(video.description ?? '');
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate font-medium">{video.title}</p>
-            {video.description ? (
-              <p className="truncate text-sm text-muted-foreground">{video.description}</p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <StatusPill status={video.status} />
-            {video.status === 'READY' && (
-              <Button size="icon" variant="ghost" onClick={() => setShowPlayer((s) => !s)} title="Preview">
-                <Play className="h-4 w-4" />
-              </Button>
-            )}
-            <Button size="icon" variant="ghost" onClick={() => setEditing(true)} title="Edit">
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" onClick={remove} disabled={deleting} title="Delete">
-              {deleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4 text-destructive" />
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-      {rowError && <p className="mt-2 text-sm text-destructive">{rowError}</p>}
-      {showPlayer && video.status === 'READY' && (
-        <div className="mt-3">
-          <HlsPlayer src={masterPlaylistUrl(video)} className="overflow-hidden rounded-lg" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function ManageCoursePage() {
+export default function CourseStudioPage() {
   const { user, checking } = useRequireRole(['INSTRUCTOR', 'ADMIN']);
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const confirm = useConfirm();
   const courseId = params.id;
+
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<CourseVideo | null>(null);
+  const [replacing, setReplacing] = useState<CourseVideo | null>(null);
   const [publishing, setPublishing] = useState(false);
-
-  // Course detail editing
-  const [editingCourse, setEditingCourse] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', price: 0 });
-  const [savingCourse, setSavingCourse] = useState(false);
-  const [deletingCourse, setDeletingCourse] = useState(false);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  // last seen status per lesson, so a poll can announce what changed
+  const seen = useRef<Map<string, CourseVideo['status']>>(new Map());
 
   const load = useCallback(async () => {
     try {
-      setCourse(await coursesApi.getById(courseId));
+      const next = await coursesApi.getById(courseId);
+      for (const v of next.videos) {
+        const before = seen.current.get(v.id);
+        if (before && before !== v.status) {
+          if (v.status === 'READY') {
+            toast.success(`“${v.title}” is ready to watch`, {
+              action: { label: 'Preview', onClick: () => router.push(`/courses/${courseId}?lesson=${v.id}`) },
+            });
+          } else if (v.status === 'FAILED') {
+            toast.error(`Couldn't process “${v.title}”`, {
+              description: failureCopy(v).message,
+              duration: Infinity,
+              action: {
+                label: 'Replace',
+                onClick: () => {
+                  setReplacing(v);
+                  setAddOpen(true);
+                },
+              },
+            });
+          }
+        }
+        seen.current.set(v.id, v.status);
+      }
+      setCourse(next);
+      setLoadError(null);
+      return next;
     } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not load the course.'));
+      setLoadError(getApiErrorMessage(e, 'Could not load this course.'));
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [courseId, router]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Poll while any video is still processing.
+  const anyProcessing = course?.videos.some(isProcessing) ?? false;
   useEffect(() => {
-    const processing = course?.videos.some((v) => v.status === 'UPLOADED' || v.status === 'TRANSCODING');
-    if (processing && !pollRef.current) {
-      pollRef.current = setInterval(load, 5000);
-    } else if (!processing && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [course, load]);
-
-  const togglePublish = async () => {
-    if (!course) return;
-    setPublishing(true);
-    try {
-      await coursesApi.update(course.id, { isPublished: !course.isPublished });
-      await load();
-    } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not update the course.'));
-    } finally {
-      setPublishing(false);
-    }
-  };
-
-  const startEditCourse = () => {
-    if (!course) return;
-    setForm({ title: course.title, description: course.description, price: course.price });
-    setEditingCourse(true);
-  };
-
-  const saveCourse = async () => {
-    if (!course) return;
-    setSavingCourse(true);
-    setError(null);
-    try {
-      await coursesApi.update(course.id, {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        price: Number(form.price) || 0,
-      });
-      setEditingCourse(false);
-      await load();
-    } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not save the course.'));
-    } finally {
-      setSavingCourse(false);
-    }
-  };
-
-  const deleteCourse = async () => {
-    if (!course) return;
-    if (
-      !window.confirm(
-        `Delete "${course.title}"? This permanently removes the course, all its videos, and all enrollments.`
-      )
-    )
-      return;
-    setDeletingCourse(true);
-    setError(null);
-    try {
-      await coursesApi.remove(course.id);
-      router.push('/dashboard');
-    } catch (e) {
-      setError(getApiErrorMessage(e, 'Could not delete the course.'));
-      setDeletingCourse(false);
-    }
-  };
+    if (!anyProcessing) return;
+    const t = setInterval(load, POLL_MS);
+    return () => clearInterval(t);
+  }, [anyProcessing, load]);
 
   if (checking || !user || loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-44 w-full rounded-panel" />
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full rounded-[14px]" />
+              <Skeleton className="h-24 w-full rounded-[14px]" />
+            </div>
+            <Skeleton className="h-56 w-full rounded-[14px]" />
+          </div>
+        </div>
       </main>
     );
   }
@@ -267,98 +121,280 @@ export default function ManageCoursePage() {
   if (!course) {
     return (
       <AppShell user={user}>
-        <div className="mx-auto max-w-3xl px-4 py-16 text-center text-muted-foreground">
-          {error || 'Course not found.'}
+        <div className="mx-auto max-w-xl px-4 py-20">
+          <EmptyState
+            icon={<Video />}
+            title="Course not available"
+            description={loadError ?? 'It may have been deleted.'}
+            action={
+              <Button asChild variant="outline">
+                <Link href="/dashboard">Back to your courses</Link>
+              </Button>
+            }
+          />
         </div>
       </AppShell>
     );
   }
 
+  const ready = course.videos.filter((v) => v.status === 'READY');
+  const totalLength = ready.reduce((sum, v) => sum + (v.duration ?? 0), 0);
+  const checklist = publishChecklist(course);
+  const canPublish = checklist.every((i) => i.done || !i.required);
+
+  const setPublished = async (publish: boolean) => {
+    const ok = await confirm(
+      publish
+        ? {
+            title: 'Publish this course?',
+            description: 'It will appear in the catalogue, and students can enrol or buy it straight away.',
+            confirmLabel: 'Publish',
+          }
+        : {
+            title: 'Unpublish this course?',
+            description: "New students won't be able to find it. Students who already have it keep their access.",
+            confirmLabel: 'Unpublish',
+          }
+    );
+    if (!ok) return;
+    setPublishing(true);
+    try {
+      await coursesApi.update(course.id, { isPublished: publish });
+      await load();
+      toast.success(publish ? 'Your course is live' : 'Course unpublished', {
+        description: publish ? 'It now appears in the catalogue.' : 'It is hidden from the catalogue.',
+      });
+    } catch (e) {
+      toast.error(getApiErrorMessage(e, 'Could not update the course.'));
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const deleteCourse = () =>
+    confirm({
+      title: 'Delete this course?',
+      description: (
+        <>
+          This permanently removes <span className="font-semibold text-foreground">{course.title}</span>, all{' '}
+          {pluralize(course.videos.length, 'lesson')} and their video files. Students lose access. This cannot be undone.
+        </>
+      ),
+      confirmLabel: 'Delete course',
+      tone: 'danger',
+      requireText: course.title,
+      action: async () => {
+        await coursesApi.remove(course.id).catch((e) => {
+          throw new Error(getApiErrorMessage(e, 'Could not delete the course.'));
+        });
+        toast.success(`“${course.title}” deleted`);
+        router.push('/dashboard');
+      },
+    });
+
+  const lessonActions: LessonActions = {
+    previewHref: (v) => `/courses/${course.id}?lesson=${v.id}`,
+    onEdit: setEditingLesson,
+    onReplace: (v) => {
+      setReplacing(v);
+      setAddOpen(true);
+    },
+    onRetry: async (v) => {
+      try {
+        await videosApi.retry(v.id);
+        seen.current.set(v.id, 'UPLOADED');
+        await load();
+        toast.success(`Retrying “${v.title}”`, { description: "We'll let you know when it's ready." });
+      } catch (e) {
+        toast.error(getApiErrorMessage(e, 'Could not retry this lesson.'));
+      }
+    },
+    onDelete: (v) =>
+      confirm({
+        title: `Delete “${v.title}”?`,
+        description: 'The lesson and its video files are removed permanently.',
+        confirmLabel: 'Delete lesson',
+        tone: 'danger',
+        action: async () => {
+          await videosApi.remove(v.id).catch((e) => {
+            throw new Error(getApiErrorMessage(e, 'Could not delete the lesson.'));
+          });
+          seen.current.delete(v.id);
+          await load();
+          toast.success('Lesson deleted');
+        },
+      }),
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    setDroppedFile(file);
+    setAddOpen(true);
+  };
+
   return (
     <AppShell user={user}>
-      <div className="mx-auto max-w-5xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
-        {editingCourse ? (
-          <Card className="glass border-white/10">
-            <CardHeader>
-              <CardTitle className="text-lg">Edit course</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Course title"
-              />
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Course description"
-                rows={4}
-                className={TEXTAREA_CLS}
-              />
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.price}
-                onChange={(e) => setForm((f) => ({ ...f, price: Number(e.target.value) }))}
-                placeholder="Price"
-              />
-              <div className="flex gap-2">
-                <Button onClick={saveCourse} disabled={savingCourse || !form.title.trim()} className="gap-1.5">
-                  {savingCourse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
-                </Button>
-                <Button variant="outline" onClick={() => setEditingCourse(false)} disabled={savingCourse}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="font-display text-3xl font-bold tracking-tight">{course.title}</h1>
-              <p className="mt-2 max-w-2xl text-muted-foreground">{course.description}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={togglePublish}
-                disabled={publishing}
-                variant={course.isPublished ? 'outline' : 'default'}
-                className="gap-2"
-              >
-                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
-                {course.isPublished ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button onClick={startEditCourse} variant="outline" className="gap-2">
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
-              <Button onClick={deleteCourse} disabled={deletingCourse} variant="destructive" className="gap-2">
-                {deletingCourse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Delete
-              </Button>
+      <div
+        className="relative mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8"
+        onDragOver={onDragOver}
+        onDragLeave={(e) => e.currentTarget === e.target && setDragOver(false)}
+        onDrop={onDrop}
+      >
+        <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Your courses
+        </Link>
+
+        <section className="flex flex-col gap-5 rounded-panel border border-border bg-background p-4 sm:flex-row sm:items-center sm:p-5">
+          <CourseCover id={course.id} title={course.title} thumbnail={course.thumbnail} coverVideoId={course.videos.find((v) => v.status === "READY")?.id ?? null} className="aspect-video w-full shrink-0 rounded-[12px] sm:w-56" />
+          <div className="min-w-0 flex-1 space-y-2.5">
+            <Badge tone={course.isPublished ? 'success' : 'warning'} dot>
+              {course.isPublished ? 'Live' : 'Draft'}
+            </Badge>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{course.title}</h1>
+            <p className="line-clamp-2 max-w-2xl text-sm text-muted-foreground">{course.description}</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">{formatPrice(course.price, course.currency)}</span>
+              <span>{pluralize(course.videos.length, 'lesson')}</span>
+              {totalLength ? <span>{courseLength(totalLength)}</span> : null}
+              {course.videos.length !== ready.length ? <span>{ready.length} ready</span> : null}
             </div>
           </div>
-        )}
+          <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+            <Button asChild variant="outline" className="gap-2">
+              <Link href={`/courses/${course.id}`}>
+                <Eye className="h-4 w-4" /> Preview
+              </Link>
+            </Button>
+            {course.isPublished ? null : (
+              <Button onClick={() => setPublished(true)} disabled={!canPublish || publishing} className="gap-2" title={canPublish ? undefined : 'Add a ready lesson first'}>
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />} Publish
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="Course actions">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                  <Pencil /> Edit course details
+                </DropdownMenuItem>
+                {course.isPublished ? (
+                  <DropdownMenuItem onSelect={() => setPublished(false)}>
+                    <Globe /> Unpublish
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem tone="danger" onSelect={deleteCourse}>
+                  <Trash2 /> Delete course
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </section>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-semibold">
+                  Lessons
+                  <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                    {course.videos.length}
+                  </span>
+                </h2>
+                <p className="text-sm text-muted-foreground">Drop a video anywhere on this page to add it.</p>
+              </div>
+              <Button onClick={() => setAddOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" /> Add lesson
+              </Button>
+            </div>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-          <Card className="glass border-white/10">
-            <CardHeader>
-              <CardTitle className="text-lg">Videos ({course.videos.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {course.videos.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No videos yet. Upload your first lesson.</p>
-              ) : (
-                course.videos.map((v) => <VideoRow key={v.id} video={v} onChanged={load} />)
-              )}
-            </CardContent>
-          </Card>
+            {course.videos.length === 0 ? (
+              <EmptyState
+                icon={<UploadCloud />}
+                title="Add your first lesson"
+                description="Upload a video and we'll prepare it in every quality your students need — up to 4K."
+                action={
+                  <Button onClick={() => setAddOpen(true)} className="gap-2">
+                    <Plus className="h-4 w-4" /> Add lesson
+                  </Button>
+                }
+                className="py-16"
+              />
+            ) : (
+              <div className="space-y-2.5">
+                {course.videos.map((v, i) => (
+                  <LessonRow key={v.id} video={v} index={i} actions={lessonActions} />
+                ))}
+              </div>
+            )}
+          </section>
 
-          <VideoUpload courseId={course.id} onUploaded={load} />
+          <aside className="space-y-4 rounded-[14px] border border-border bg-background p-5 lg:sticky lg:top-24">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">Publishing</h2>
+              <Badge tone={course.isPublished ? 'success' : 'warning'} dot>
+                {course.isPublished ? 'Live' : 'Draft'}
+              </Badge>
+            </div>
+            {course.isPublished ? (
+              <p className="text-sm text-muted-foreground">Your course is in the catalogue. Students can find it, enrol or buy it.</p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Only you can see this course until you publish it.</p>
+                <PublishChecklist items={checklist} />
+                <Button onClick={() => setPublished(true)} disabled={!canPublish || publishing} className="w-full gap-2">
+                  {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />} Publish course
+                </Button>
+              </>
+            )}
+            <Button asChild variant="outline" className="w-full gap-2">
+              <Link href={`/courses/${course.id}`}>
+                <Eye className="h-4 w-4" /> See it as a student
+              </Link>
+            </Button>
+          </aside>
         </div>
+
+        {dragOver ? (
+          <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-background/80">
+            <div className="flex flex-col items-center gap-3 rounded-panel border-2 border-dashed border-primary bg-surface px-16 py-12 text-center">
+              <UploadCloud className="h-8 w-8 text-primary" />
+              <p className="text-lg font-semibold">Drop to add a lesson</p>
+            </div>
+          </div>
+        ) : null}
       </div>
+
+      <AddLessonDialog
+        courseId={course.id}
+        open={addOpen}
+        initialFile={droppedFile}
+        replace={replacing}
+        onOpenChange={(o) => {
+          setAddOpen(o);
+          if (!o) {
+            setDroppedFile(null);
+            setReplacing(null);
+          }
+        }}
+        onUploaded={(v) => {
+          seen.current.set(v.id, 'UPLOADED');
+          load();
+        }}
+      />
+      <EditCourseDialog course={course} open={editOpen} onOpenChange={setEditOpen} onSaved={load} />
+      <EditLessonDialog video={editingLesson} onClose={() => setEditingLesson(null)} onSaved={load} />
     </AppShell>
   );
 }

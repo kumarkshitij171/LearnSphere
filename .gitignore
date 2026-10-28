@@ -5,3 +5,4 @@ data/db
 .pnpm-store
 localstack-data
 memory.md
+.DS_Store

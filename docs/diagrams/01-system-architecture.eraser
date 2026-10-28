@@ -1,0 +1,96 @@
+// LearnSphere - complete target system architecture (cloud-architecture-diagram)
+// Source of truth: ARCHITECTURE.md. Keep both in step.
+
+title LearnSphere - Target System Architecture
+
+Student [icon: user]
+Instructor [icon: user-check]
+
+Edge [color: gray] {
+  Route53 [icon: aws-route-53, label: "Route 53"]
+  ACM [icon: aws-certificate-manager, label: "ACM / TLS"]
+  CloudFront [icon: aws-cloudfront, label: "CloudFront - HLS + static"]
+  ALB [icon: aws-elastic-load-balancing, label: "ALB / Ingress - one origin"]
+}
+
+Cluster [color: blue, label: "EKS cluster"] {
+  Frontend [icon: nextjs, label: "frontend :3000"]
+  Auth [icon: nodejs, label: "auth-service :5000"]
+  Course [icon: nodejs, label: "course-service"]
+  Order [icon: java, label: "order-service :8086"]
+  Notify [icon: java, label: "notification-service :8085"]
+  Transcoder [icon: nodejs, label: "video-transcoder :7000"]
+}
+
+Stores [color: green, label: "Stateful stores"] {
+  Postgres [icon: postgresql, label: "Postgres - public + orders"]
+  Mongo [icon: mongodb, label: "Mongo - templates + ledger"]
+  Redis [icon: redis, label: "Redis - OTP, idempotency, limits"]
+}
+
+Messaging [color: orange] {
+  Kafka [icon: kafka, label: "Kafka / MSK"]
+  SNS [icon: aws-simple-notification-service, label: "SNS"]
+  SQS [icon: aws-simple-queue-service, label: "SQS"]
+}
+
+Storage [color: purple, label: "Object storage"] {
+  RawBucket [icon: aws-simple-storage-service, label: "s3 raw-videos"]
+  ProcessedBucket [icon: aws-simple-storage-service, label: "s3 processed-videos"]
+}
+
+External [color: red, label: "Third parties"] {
+  Razorpay [icon: credit-card, label: "Razorpay"]
+  Stripe [icon: stripe]
+  SMTP [icon: mail, label: "SMTP / SES"]
+  FCM [icon: firebase, label: "FCM push"]
+}
+
+// request paths
+Student > Route53
+Instructor > Route53
+Route53 > CloudFront
+Route53 > ALB
+ACM - ALB
+CloudFront > ProcessedBucket: signed HLS reads
+ALB > Frontend
+Frontend > Auth: /api/v1/users
+Frontend > Course: /api/v1/courses
+Frontend > Order: /api/v1/orders
+
+// commerce
+Order > Course: GET /internal/courses/:id
+Order > Razorpay: create checkout
+Order > Stripe: create checkout
+Razorpay > Order: signed webhook
+Stripe > Order: signed webhook
+
+// video pipeline
+Instructor > RawBucket: presigned PUT
+RawBucket > SNS: ObjectCreated
+SNS > SQS
+SQS > Kafka: bridge (planned)
+Course > Kafka: video.uploaded
+Kafka > Transcoder
+Transcoder > RawBucket: download source
+Transcoder > ProcessedBucket: upload HLS ladder
+Transcoder > Course: processed callback
+
+// events and notifications
+Order > Kafka: order.paid / failed / refunded
+Kafka > Course: grant or revoke Enrollment
+Order > Kafka: notifications
+Auth > Kafka: notifications
+Kafka > Notify
+Notify > SMTP
+Notify > FCM
+
+// stores
+Auth > Postgres
+Auth > Redis
+Course > Postgres
+Order > Postgres
+Order > Redis
+Transcoder > Postgres
+Notify > Mongo
+Notify > Redis

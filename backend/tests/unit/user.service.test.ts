@@ -135,14 +135,24 @@ describe('user.service - refresh token verification', () => {
 });
 
 describe('user.service - activation token', () => {
-  it('createActivationToken returns a 4-digit code and a JWT with a hashed code', async () => {
+  it('createActivationToken returns a 6-digit code bound to the token by an HMAC, not a hash of the code', async () => {
     const { token, activationCode } = await createActivationToken(baseUser);
-    expect(activationCode).toMatch(/^\d{4}$/);
+    expect(activationCode).toMatch(/^\d{6}$/);
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     expect(decoded.id).toBe(baseUser.id);
-    // the code stored in the token is hashed, not the raw 4 digits
-    expect(decoded.activationCode).not.toBe(activationCode);
-    expect(await verifyPassword(activationCode, decoded.activationCode)).toBe(true);
+    expect(decoded.codeMac).toMatch(/^[a-f0-9]{64}$/);
+    // nothing in the (readable) token lets its holder test guesses offline
+    expect(decoded.activationCode).toBeUndefined();
+    expect(JSON.stringify(decoded)).not.toContain(activationCode);
+    const { createHash } = require('crypto');
+    expect(decoded.codeMac).not.toBe(createHash('sha256').update(activationCode).digest('hex'));
+  });
+
+  it('codes are spread across the whole 6-digit space, zero-padded', async () => {
+    const codes = new Set<string>();
+    for (let i = 0; i < 200; i++) codes.add((await createActivationToken(baseUser)).activationCode);
+    expect(codes.size).toBeGreaterThan(190);
+    for (const c of codes) expect(c).toMatch(/^\d{6}$/);
   });
 
   it('verifyToken returns true for a matching otp and marks the user verified', async () => {
@@ -159,11 +169,21 @@ describe('user.service - activation token', () => {
   });
 
   it('verifyToken returns false for a wrong otp', async () => {
-    const { token } = await createActivationToken(baseUser);
-    expect(await verifyToken(token, '0000')).toBe(false);
+    const { token, activationCode } = await createActivationToken(baseUser);
+    const wrong = activationCode === '000000' ? '000001' : '000000';
+    expect(await verifyToken(token, wrong)).toBe(false);
   });
 
-  it('verifyToken returns false for a malformed token', async () => {
-    expect(await verifyToken('garbage', '1234')).toBe(false);
+  it("a code is only valid for the account it was issued to", async () => {
+    const { activationCode } = await createActivationToken(baseUser);
+    const other = await createActivationToken({ ...baseUser, id: 'someone-else' });
+    expect(await verifyToken(other.token, activationCode)).toBe(activationCode === other.activationCode);
+  });
+
+  it('verifyToken returns false for a malformed token or a non-6-digit code', async () => {
+    const { token } = await createActivationToken(baseUser);
+    expect(await verifyToken('garbage', '123456')).toBe(false);
+    expect(await verifyToken(token, '1234')).toBe(false);
+    expect(await verifyToken(token, 'abcdef')).toBe(false);
   });
 });

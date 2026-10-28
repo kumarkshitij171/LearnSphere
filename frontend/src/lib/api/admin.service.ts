@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { endpoints } from './endpoints';
+import type { CourseSummary } from './courses.service';
 import type { Role } from './users.service';
 
 export type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -50,6 +51,11 @@ export const adminApi = {
   },
   setUserRole(id: string, role: Role) {
     return apiClient.patch(endpoints.admin.userRole(id), { role });
+  },
+  /** every course, drafts included */
+  async listCourses(): Promise<CourseSummary[]> {
+    const { data } = await apiClient.get(endpoints.admin.courses);
+    return data?.courses ?? [];
   },
 };
 

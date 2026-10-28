@@ -1,0 +1,45 @@
+// LearnSphere - what actually runs today (cloud-architecture-diagram)
+// Verified against docker-compose.yml and the service sources.
+
+title LearnSphere - Current Local Topology
+
+Browser [icon: monitor]
+
+Apps [color: blue, label: "Runs via make start"] {
+  Frontend [icon: nextjs, label: "frontend :3000"]
+  Backend [icon: nodejs, label: "backend :5000 - auth + courses + videos"]
+  Transcoder [icon: nodejs, label: "video-transcoder :7000 - no DB"]
+  Notify [icon: java, label: "notification-service :8085 - scaffold"]
+  Order [icon: java, label: "order-service :8086 - scaffold only"]
+}
+
+Infra [color: green, label: "docker compose up -d"] {
+  Postgres [icon: postgresql, label: "Postgres :5434 - testDB"]
+  Redis [icon: redis, label: "Redis :6379"]
+  Kafka [icon: kafka, label: "Kafka KRaft :9092"]
+  Mongo [icon: mongodb, label: "Mongo :27017"]
+  LocalStack [icon: aws, label: "LocalStack :4566 - s3 sqs sns"]
+}
+
+UIs [color: gray, label: "Dev UIs"] {
+  KafkaUI [icon: monitor, label: "Kafka UI :8080"]
+  MongoExpress [icon: monitor, label: "Mongo Express :8081"]
+  RedisInsight [icon: monitor, label: "RedisInsight :5540"]
+}
+
+Browser > Frontend
+Frontend > Backend: axios + httpOnly cookie
+Frontend > Transcoder: HLS playback
+Backend > Postgres: Prisma
+Backend > Redis: OTP + session
+Backend > LocalStack: presign + put
+Backend > Kafka: video.uploaded
+Kafka > Transcoder: consume
+Transcoder > LocalStack: download raw, upload HLS
+Transcoder > Backend: processed callback
+Notify > Mongo
+Notify > Redis
+Notify > Kafka
+KafkaUI > Kafka
+MongoExpress > Mongo
+RedisInsight > Redis

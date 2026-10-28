@@ -2,10 +2,13 @@ import { NextFunction, Request, Response } from "express";
 import { catchAsyncError } from "../middleware/catchAsyncError";
 import ErrorHandler from "../utils/ErrorHandler";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { sendMail } from "../utils/sendMail";
+import { publishActivationEmail } from "../services/notification.service";
+import { allowOtpAttempt, allowResend } from "../services/otpGuard.service";
 import { createActivationToken, encryptedPassword, generateAccessToken, generateTokens, hashToken, verifyPassword, verifyRefreshToken, verifyToken } from "../services/user.service";
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { validatePassword } from "../utils/passwordValidation";
+
+const RESEND_MESSAGE = "If this email has an account waiting to be verified, we've sent it a new code. Already verified? Log in instead.";
 
 const prisma = new PrismaClient();
 
@@ -84,17 +87,8 @@ export const registerUser = catchAsyncError(async (req: Request, res: Response, 
         const { token, activationCode } = await createActivationToken(user);
         const activationUrl = `${process.env.CLIENT_URL}/verify?otp=${activationCode}&token=${token}`;
 
-        // send activation mail to user email
-        await sendMail({
-            email: user.email,
-            subject: 'Account Activation',
-            template: 'activationMail',
-            data: {
-                activationCode,
-                name: user.name,
-                activationUrl
-            }
-        })
+        // notification-service delivers the email; the account exists either way
+        const emailQueued = await publishActivationEmail(user, activationCode, activationUrl, token);
 
         // Check if request is from mobile app (check for custom header or user-agent)
         const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
@@ -114,7 +108,10 @@ export const registerUser = catchAsyncError(async (req: Request, res: Response, 
 
         return response.json({
             success: true,
-            message: 'Account created successfully. Please verify your email to activate your account',
+            emailQueued,
+            message: emailQueued
+                ? 'Account created successfully. Please verify your email to activate your account'
+                : 'Account created, but we could not send the verification email right now. Use "resend verification" in a minute.',
             ...(isMobileApp && { token }) // Only include token in body for mobile
         })
 
@@ -141,6 +138,11 @@ export const verifyUser = catchAsyncError(async (req: Request, res: Response, ne
 
         if (!otp || !token) {
             return next(new ErrorHandler(400, 'OTP and Token are required'));
+        }
+
+        // a code gets a handful of tries; after that only a fresh code can verify the account
+        if (!(await allowOtpAttempt(token as string))) {
+            return next(new ErrorHandler(429, 'Too many attempts with this code. Request a new code and try again.'));
         }
 
         if (!await verifyToken(token as string, otp as string)) {
@@ -199,31 +201,25 @@ export const reverifyUser = catchAsyncError(async (req: Request, res: Response, 
             return next(new ErrorHandler(400, "Email is required"));
         }
 
-        const user = await prisma.user.findUnique({ where: { email } });
-
-        if (!user) {
-            return next(new ErrorHandler(404, "No account found with this email"));
+        if (!(await allowResend(email))) {
+            return next(new ErrorHandler(429, 'Too many codes requested for this email. Try again in 15 minutes.'));
         }
 
-        if (user.isVerified) {
-            return next(new ErrorHandler(400, "Account is already verified. Please log in."));
+        // the same answer whether or not the address has an account, so this cannot be used to
+        // find out who is registered — only a real, unverified account is actually sent a code
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user || user.isVerified) {
+            return res.status(200).json({ success: true, message: RESEND_MESSAGE });
         }
 
         // create a fresh activation code + token
         const { token, activationCode } = await createActivationToken(user);
         const activationUrl = `${process.env.CLIENT_URL}/verify?otp=${activationCode}&token=${token}`;
 
-        // resend activation mail to user email
-        await sendMail({
-            email: user.email,
-            subject: 'Account Activation',
-            template: 'activationMail',
-            data: {
-                activationCode,
-                name: user.name,
-                activationUrl
-            }
-        });
+        const emailQueued = await publishActivationEmail(user, activationCode, activationUrl, token);
+        if (!emailQueued) {
+            return next(new ErrorHandler(503, 'We could not send the verification email right now. Please try again shortly.'));
+        }
 
         // Check if request is from mobile app
         const isMobileApp = req.headers['x-mobile-app'] === 'true' || req.headers['user-agent']?.includes('Mobile');
@@ -242,7 +238,7 @@ export const reverifyUser = catchAsyncError(async (req: Request, res: Response, 
 
         return response.json({
             success: true,
-            message: 'Verification email sent. Please check your inbox.',
+            message: RESEND_MESSAGE,
             ...(isMobileApp && { token })
         });
     } catch (error: any) {

@@ -1,0 +1,39 @@
+// Video upload to adaptive HLS playback (sequence-diagram)
+// Grounded in backend/controllers/videoUpload.controller.ts and
+// video-transcoder/src/{index,services/transcode.service}.ts
+
+title Video Upload - Presign to HLS Playback
+
+autoNumber on
+
+Instructor [icon: user-check]
+Frontend [icon: nextjs]
+Backend [icon: nodejs]
+S3 [icon: aws-simple-storage-service]
+Kafka [icon: kafka]
+Transcoder [icon: nodejs]
+Postgres [icon: postgresql]
+
+Instructor > Frontend: pick file for a course
+Frontend > Backend: POST /video-upload/presign
+Backend > Backend: assert instructor owns course
+Backend > S3: presign PUT {videoId}/original.mp4
+Backend --> Frontend: uploadUrl + videoId
+Frontend > S3: PUT file direct, browser to bucket
+Frontend > Backend: POST /video-upload confirm
+Backend > Postgres: Video row status UPLOADED
+Backend > Kafka: publish video.uploaded
+Kafka > Transcoder: consume video.uploaded
+Transcoder > Backend: callback status TRANSCODING
+Transcoder > S3: GET original.mp4
+Transcoder > Transcoder: ffmpeg ladder 240p 480p 720p 1080p
+Transcoder > Transcoder: write master.m3u8 + variant playlists
+Transcoder > S3: upload {videoId}/ segments + playlists
+Transcoder > Backend: callback READY + hlsMasterPath
+Backend > Postgres: Video status READY
+Frontend > Backend: GET /video-upload/{videoId}
+Backend --> Frontend: metadata + hlsMasterPath
+Frontend > Transcoder: GET /api/video-transcoder/hls/{videoId}/master.m3u8
+Transcoder > S3: stream object with Range support
+Transcoder --> Frontend: playlist then .ts segments
+Frontend > Instructor: hls.js adaptive playback

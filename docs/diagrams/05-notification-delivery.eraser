@@ -1,0 +1,38 @@
+// Notification delivery with retry and DLQ (flowchart-diagram)
+// Source: notification-service/SYSTEM_DESIGN.md
+
+title Notification Delivery
+
+Record [shape: oval, label: "Kafka record on notifications"]
+Parse [shape: diamond, label: "JSON parses?"]
+Discard [shape: oval, label: "log + discard - a poison record must not stall the partition"]
+FanOut [label: "for each channel in message.channels"]
+Claim [shape: diamond, label: "Redis SETNX claim notif:idem:{tenant}:{id}:{channel}:{attempt}"]
+Skip [shape: oval, label: "skip - redelivery already handled"]
+Row [label: "load or create notifications row, attempts++"]
+Template [shape: diamond, label: "template found for (tenant, name, channel)?"]
+Render [shape: diamond, label: "every {{variable}} resolved?"]
+Sender [shape: diamond, label: "ChannelSender registered for channel?"]
+Send [label: "sender.send(...) - SMTP / FCM / SMS"]
+Result [shape: diamond, label: "SendResult"]
+Sent [shape: oval, label: "status SENT + providerMessageId"]
+Retry [shape: oval, label: "status RETRYING - republish to notifications_retry"]
+Dlq [shape: oval, label: "status FAILED - publish to notifications_dlq"]
+
+Record > Parse
+Parse > Discard: no
+Parse > FanOut: yes
+FanOut > Claim
+Claim > Skip: already held
+Claim > Row: claimed, or Redis down - fail open
+Row > Template
+Template > Dlq: missing - PERMANENT
+Template > Render: found
+Render > Dlq: unresolved - PERMANENT
+Render > Sender: rendered
+Sender > Dlq: none - PERMANENT
+Sender > Send: found
+Send > Result
+Result > Sent: success
+Result > Retry: TRANSIENT
+Result > Dlq: PERMANENT or EXHAUSTED_RETRIES

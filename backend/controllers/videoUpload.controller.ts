@@ -4,6 +4,7 @@ import ErrorHandler from '../utils/ErrorHandler';
 import {
   generatePresignedUploadURL,
   generatePresignedUploadURLForVideo,
+  s3ObjectExists,
 } from '../services/s3.service';
 import {
   createVideoRecord,
@@ -11,8 +12,19 @@ import {
   getVideoById,
   updateVideoRecord,
   deleteVideoRecord,
+  requeueVideo,
+  findVideoThumbnail,
 } from '../services/video.service';
+import {
+  THUMBNAIL_REDIRECT_HEADERS,
+  isThumbnailKeyFor,
+  presignThumbnailDownload,
+  presignThumbnailUpload,
+  removeThumbnail,
+  verifyThumbnailUpload,
+} from '../services/asset.service';
 import { isEnrolled } from '../services/course.service';
+import { transcodeReportExtras } from '../utils/validation';
 import { randomUUID } from 'crypto';
 
 /** Legacy: presigned URL with random key (uploads/userId/uuid-filename). */
@@ -122,12 +134,14 @@ export const confirmVideoUpload = catchAsyncError(
 /**
  * POST /videos/:videoId/processed
  * Called by video-transcoder service. Requires X-Transcoder-Api-Key.
- * Body: { status: "READY" | "FAILED", hlsMasterPath?, error? }
+ * Body: { status: "TRANSCODING" | "READY" | "FAILED", hlsMasterPath?, error?, errorCode?,
+ *         duration? (whole seconds), resolutions? ([{ label, width, height, bandwidth }]) }
  */
 export const videoProcessed = catchAsyncError(
   async (req: Request, res: Response, next: NextFunction) => {
     const { videoId } = req.params;
     const { status, hlsMasterPath, error } = req.body;
+    const { duration, resolutions, errorCode, ignored } = transcodeReportExtras(req.body);
 
     if (!videoId) {
       return next(new ErrorHandler(400, 'videoId is required'));
@@ -139,19 +153,30 @@ export const videoProcessed = catchAsyncError(
       return next(new ErrorHandler(400, 'hlsMasterPath is required when status is READY'));
     }
 
+    if (ignored.length) {
+      console.warn(`[video-upload] ${videoId}: ignoring malformed ${ignored.join(', ')} from the transcoder`);
+    }
+
     const video = await markVideoProcessed({
       videoId,
       status,
       hlsMasterPath,
       error,
+      errorCode,
+      duration,
+      resolutions,
     });
+    // a 4xx tells the transcoder to stop reporting; a 500 would have Kafka redeliver the job forever
+    if (!video) {
+      return next(new ErrorHandler(404, 'Video not found'));
+    }
 
     return res.status(200).json({
       success: true,
       video: {
-        id: video?.id,
-        status: video?.status,
-        hlsMasterPath: video?.hlsMasterPath,
+        id: video.id,
+        status: video.status,
+        hlsMasterPath: video.hlsMasterPath,
       },
     });
   }
@@ -245,3 +270,95 @@ export const deleteVideo = catchAsyncError(
     return res.status(200).json({ success: true, message: 'Video deleted' });
   }
 );
+
+const lessonView = (v: { id: string; title: string; description: string | null; status: string }) => ({
+  id: v.id,
+  title: v.title,
+  description: v.description,
+  status: v.status,
+});
+
+/** POST /video-upload/:videoId/replace/presign — an upload URL for a new file under the same lesson. */
+export const presignReplacement = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const contentType = req.body?.contentType ?? 'video/mp4';
+  const { url, key } = await generatePresignedUploadURLForVideo(video.id, contentType);
+  return res.status(200).json({ uploadUrl: url, videoId: video.id, key });
+});
+
+/** POST /video-upload/:videoId/replace — the new file is uploaded; transcode it in place of the old one. */
+export const confirmReplacement = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const { mimeType, fileName, fileSize } = req.body ?? {};
+  if (typeof mimeType !== 'string' || !mimeType) return next(new ErrorHandler(400, 'mimeType is required'));
+  const bucket = process.env.S3_RAW_VIDEO_BUCKET!;
+  if (!(await s3ObjectExists(bucket, video.originalKey))) {
+    return next(new ErrorHandler(409, 'The new file has not finished uploading'));
+  }
+  const updated = await requeueVideo(video, {
+    mimeType,
+    ...(typeof fileName === 'string' && { fileName }),
+    ...(Number.isInteger(fileSize) && fileSize > 0 && { fileSize }),
+  });
+  return res.status(200).json({ success: true, video: lessonView(updated) });
+});
+
+/** POST /video-upload/:videoId/retry — transcode a failed lesson again from the original upload. */
+export const retryVideo = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  if (video.status !== 'FAILED') return next(new ErrorHandler(409, 'Only a failed lesson can be retried'));
+  const bucket = process.env.S3_RAW_VIDEO_BUCKET!;
+  if (!(await s3ObjectExists(bucket, video.originalKey))) {
+    return next(new ErrorHandler(409, 'The original file is no longer available — replace the video instead'));
+  }
+  const updated = await requeueVideo(video);
+  return res.status(200).json({ success: true, video: lessonView(updated) });
+});
+
+// Public, so an <img> can load it without credentials. 404 means "use the transcoder's poster".
+export const getLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await findVideoThumbnail(req.params.videoId);
+  if (!video || !isThumbnailKeyFor('lesson', video.id, video.thumbnail)) {
+    return next(new ErrorHandler(404, 'This lesson has no thumbnail'));
+  }
+  res.set(THUMBNAIL_REDIRECT_HEADERS);
+  return res.redirect(302, await presignThumbnailDownload(video.thumbnail));
+});
+
+export const presignLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const { uploadUrl, key } = await presignThumbnailUpload('lesson', video.id, req.body.contentType);
+  return res.status(200).json({ success: true, uploadUrl, key });
+});
+
+export const confirmLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  const { key } = req.body;
+  const problem = await verifyThumbnailUpload('lesson', video.id, key);
+  if (problem) return next(new ErrorHandler(400, problem));
+
+  await updateVideoRecord(video.id, { thumbnail: key });
+  if (video.thumbnail !== key) await removeThumbnail('lesson', video.id, video.thumbnail);
+  return res.status(200).json({ success: true, thumbnail: key });
+});
+
+export const deleteLessonThumbnail = catchAsyncError(async (req: Request, res: Response, next: NextFunction) => {
+  const video = await getVideoById(req.params.videoId);
+  if (!video) return next(new ErrorHandler(404, 'Video not found'));
+  if (!canManageVideo(video, req)) return next(new ErrorHandler(403, 'You do not have permission to modify this video'));
+  if (video.thumbnail) {
+    await updateVideoRecord(video.id, { thumbnail: null });
+    await removeThumbnail('lesson', video.id, video.thumbnail);
+  }
+  return res.status(200).json({ success: true });
+});

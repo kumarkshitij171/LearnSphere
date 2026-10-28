@@ -120,7 +120,7 @@ export default function SignupPage() {
 
     setIsLoading(true);
     try {
-      // Register sets an httpOnly activation `token` cookie and emails a 4-digit OTP.
+      // Register sets an httpOnly activation `token` cookie and emails a 6-digit OTP.
       await usersApi.register({
         name: formData.name.trim(),
         email: formData.email,
@@ -145,8 +145,8 @@ export default function SignupPage() {
   const handleVerify = async (code?: string) => {
     const value = code ?? otp;
     setOtpError(null);
-    if (!/^\d{4}$/.test(value)) {
-      setOtpError('Enter the 4-digit code from your email.');
+    if (!/^\d{6}$/.test(value)) {
+      setOtpError('Enter the 6-digit code from your email.');
       return;
     }
 
@@ -169,14 +169,10 @@ export default function SignupPage() {
     setResendState('sending');
     setResendNote(null);
     try {
-      // Re-registering regenerates and re-emails the activation code.
-      await usersApi.register({
-        name: formData.name.trim(),
-        email: formData.email,
-        password: formData.password,
-      });
+      // re-registering an existing account fails with "User already exists"; resending is its own endpoint
+      const { data } = await usersApi.reverifyEmail(formData.email);
       setResendState('sent');
-      setResendNote('A new code has been sent to your email.');
+      setResendNote(data?.message ?? 'A new code has been sent to your email.');
     } catch (error) {
       setResendState('idle');
       setResendNote(
@@ -191,7 +187,7 @@ export default function SignupPage() {
   if (checkingSession) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </main>
     );
   }
@@ -208,16 +204,16 @@ export default function SignupPage() {
           Back
         </button>
 
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/30">
-          <MailCheck className="h-7 w-7 text-primary" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-surface">
+          <MailCheck className="h-7 w-7 text-foreground" />
         </div>
 
         <div className="mt-6 space-y-2">
-          <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="text-display-m">
             Verify your email
           </h1>
           <p className="text-muted-foreground">
-            We sent a 4-digit code to{' '}
+            We sent a 6-digit code to{' '}
             <span className="font-medium text-foreground">{formData.email}</span>.
             Enter it below to activate your account.
           </p>
@@ -227,14 +223,14 @@ export default function SignupPage() {
           <OtpInput
             value={otp}
             onChange={setOtp}
-            length={4}
+            length={6}
             hasError={!!otpError}
             disabled={verifying}
             onComplete={(code) => handleVerify(code)}
           />
 
           {otpError && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+            <div className="flex items-start gap-2 rounded-[10px] bg-danger/10 px-3 py-2.5 text-sm text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
               <span>{otpError}</span>
             </div>
@@ -246,7 +242,7 @@ export default function SignupPage() {
           <Button
             onClick={() => handleVerify()}
             disabled={verifying || otp.length < 4}
-            className="h-11 w-full text-base"
+            className="h-11 w-full"
           >
             {verifying ? (
               <>
@@ -264,7 +260,7 @@ export default function SignupPage() {
               type="button"
               onClick={handleResend}
               disabled={resendState === 'sending'}
-              className="font-medium text-primary transition-colors hover:underline disabled:opacity-60"
+              className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground disabled:opacity-60"
             >
               {resendState === 'sending' ? 'Sending...' : 'Resend'}
             </button>
@@ -277,14 +273,14 @@ export default function SignupPage() {
   return (
     <AuthShell>
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+        <h1 className="text-display-m">
           Create your account
         </h1>
         <p className="text-muted-foreground">
           Already have an account?{' '}
           <Link
             href="/login"
-            className="font-medium text-primary transition-colors hover:underline"
+            className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground"
           >
             Sign in
           </Link>
@@ -293,7 +289,7 @@ export default function SignupPage() {
 
       <form className="mt-8 space-y-5" onSubmit={handleRegister}>
         {apiError && (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+          <div className="flex items-start gap-2 rounded-[10px] bg-danger/10 px-3 py-2.5 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
             <span>{apiError}</span>
           </div>
@@ -368,7 +364,7 @@ export default function SignupPage() {
                 <li
                   key={c.label}
                   className={`flex items-center gap-1.5 text-xs transition-colors ${
-                    c.ok ? 'text-primary' : 'text-muted-foreground'
+                    c.ok ? 'text-success' : 'text-muted-foreground'
                   }`}
                 >
                   {c.ok ? (
@@ -403,7 +399,7 @@ export default function SignupPage() {
           )}
         </div>
 
-        <Button type="submit" disabled={isLoading} className="h-11 w-full text-base">
+        <Button type="submit" disabled={isLoading} className="h-11 w-full">
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

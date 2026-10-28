@@ -1,22 +1,29 @@
 package com.lms.notification_service.models.entity;
 
+import com.lms.notification_service.models.domain.ChannelType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-
 import java.util.Map;
-import java.util.UUID;
 
 @Data
-@Document(collection="templates")
+@Document(collection = "templates")
+@CompoundIndex(name = "tenant_name_channel_idx", def = "{'tenantId': 1, 'name': 1, 'channel': 1}", unique = true)
 @EqualsAndHashCode(callSuper = true) // calls super class of the extended class
 public class Template extends AbstractEntity {
     @Id
-    private UUID id;
+    private String id;
     private String name;
-    private Map<String,String> templateVariables;
+    private ChannelType channel;
+    // declared placeholders and their fallback values; a null value means the caller must supply it
+    private Map<String, String> templateVariables;
+    // rendered for EMAIL subject / PUSH and IN_APP title; unused by SMS
+    private String subject;
     private String templateMessage;
-    private UUID tenantId;
+    private String tenantId;
+    private boolean active = true;
+    private int version = 1;
 }

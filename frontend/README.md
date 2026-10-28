@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# LearnSphere frontend
 
-## Getting Started
+The web app: browse and buy courses, watch them, upload and manage your own as an instructor,
+and run the platform from the admin console — including a VS Code-style editor for the UI
+configuration. Next.js 14 (App Router) + Tailwind, port `3000`.
 
-First, run the development server:
+> How it is built and why: [`SYSTEM_DESIGN.md`](SYSTEM_DESIGN.md).
+
+## Prerequisites
+
+- Node.js 22+ and npm
+- The backend running (and order-service / notification-service for purchases and push)
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install                    # also copies Monaco into public/monaco for the config editor
+cp .env.sample .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev                    # http://localhost:3000
+npm run build && npm start     # production build
+npm run lint
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+## Configuration
 
-## Learn More
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | the backend, e.g. `http://localhost:5000` |
+| `NEXT_PUBLIC_ORDER_API_URL` | order-service, default `http://localhost:8086` |
+| `NEXT_PUBLIC_NOTIFICATION_API_URL` | notification-service, default `http://localhost:8085` |
+| `NEXT_PUBLIC_TRANSCODER_URL` | where HLS video is streamed from |
+| `NEXT_PUBLIC_FIREBASE_*` | optional — push notifications are offered only when all five are set |
 
-To learn more about Next.js, take a look at the following resources:
+In production a missing required variable fails the build instead of silently pointing at
+localhost.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## What is where
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+| Route | Who | What |
+|---|---|---|
+| `/` | everyone | landing page (copy comes from the UI config) |
+| `/login`, `/signup`, `/verify` | guests | sign-up with an emailed code |
+| `/dashboard` | signed in | my learning, the catalogue, my courses as an instructor |
+| `/courses/[id]` | signed in | watch, or buy |
+| `/courses/new`, `/courses/[id]/manage` | instructors | create a course, upload videos |
+| `/orders` | signed in | purchase history |
+| `/admin`, `/admin/ui-config` | admins | users, instructor requests, orders and refunds, UI configuration |
 
-## Deploy on Vercel
+## Buying a course locally
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Payments run on order-service's mock provider by default: click **Buy**, then **Pay** in the
+test checkout. With `RAZORPAY_ENABLED=true` on order-service the real Razorpay test modal opens
+instead.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+## Changing the UI without a deploy
+
+Admins edit branding, theme, navigation and home-page copy at `/admin/ui-config`, then publish.
+If you change the *default* in `backend/config/ui/`, run `npm run ui-config:sync` to refresh
+the copy bundled here as the offline fallback.

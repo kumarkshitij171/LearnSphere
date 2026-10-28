@@ -1,0 +1,42 @@
+// Service boundaries today vs target (cloud-architecture-diagram)
+// Why it is safe to build commerce before the split: order-service depends on
+// the catalogue contract, never on the database. See order-service/SYSTEM_DESIGN.md.
+
+title Service Split - Today vs Target
+
+Today [color: gray] {
+  BackendNow [icon: nodejs, label: "backend :5000 - User + auth + Course + Enrollment + Video + presign"]
+  TranscoderNow [icon: nodejs, label: "video-transcoder - callback only, dead Prisma client"]
+  NotifyNow [icon: java, label: "notification-service - scaffold"]
+  OrderNow [icon: java, label: "order-service - scaffold only"]
+  DbNow [icon: postgresql, label: "Postgres public - one Prisma schema, two copies"]
+}
+
+Target [color: blue] {
+  AuthSvc [icon: nodejs, label: "auth-service - User, tokens, OTP"]
+  CourseSvc [icon: nodejs, label: "course-service - Course, Enrollment, Video"]
+  OrderSvc [icon: java, label: "order-service - Order, Payment, Refund"]
+  NotifySvc [icon: java, label: "notification-service - all outbound messages"]
+  TranscoderSvc [icon: nodejs, label: "video-transcoder - callback only, no Prisma"]
+  AuthDb [icon: postgresql, label: "schema auth"]
+  CourseDb [icon: postgresql, label: "schema course"]
+  OrderDb [icon: postgresql, label: "schema orders - Flyway"]
+  NotifyDb [icon: mongodb, label: "Mongo notifications"]
+}
+
+BackendNow > DbNow
+TranscoderNow > BackendNow: processed callback
+OrderNow > BackendNow: GET /internal/courses/:id
+NotifyNow > OrderNow: notifications topic
+
+AuthSvc > AuthDb
+CourseSvc > CourseDb
+OrderSvc > OrderDb
+NotifySvc > NotifyDb
+OrderSvc > CourseSvc: GET /internal/courses/:id - unchanged contract
+CourseSvc > OrderSvc: consumes order.paid
+TranscoderSvc > CourseSvc: processed callback - one base-URL change
+AuthSvc > NotifySvc: notifications topic
+OrderSvc > NotifySvc: notifications topic
+
+Today > Target: move Course + Enrollment + Video out; order-service changes by zero lines

@@ -2,7 +2,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { Iuser } from "../interfaces/user.interface";
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
+import crypto, { createHmac, randomInt, timingSafeEqual } from "crypto";
 
 interface IactivationToken {
     token: string;
@@ -13,14 +13,18 @@ const BCRYPT_PEPPER = process.env.BCRYPT_PEPPER || "";
 
 const prisma = new PrismaClient();
 
+// The code is bound to the token with an HMAC under a server secret. A bcrypt hash inside the JWT
+// (readable by anyone holding it) let the holder brute-force the code offline, past every limit.
+const codeMac = (userId: string, code: string) =>
+    createHmac('sha256', process.env.JWT_SECRET!).update(`${userId}:${code}`).digest('hex');
+
 export const createActivationToken = async (user: Iuser): Promise<IactivationToken> => {
-    const activationCode = Math.floor(1000 + Math.random() * 9000).toString(); // 4 digit number
-    const encryptActivationCode = await encryptedPassword(activationCode);
+    const activationCode = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const token = jwt.sign(
         {
             id: user.id,
             name: user.name,
-            activationCode: encryptActivationCode
+            codeMac: codeMac(user.id, activationCode)
         },
         process.env.JWT_SECRET!,
         {
@@ -36,21 +40,16 @@ export const createActivationToken = async (user: Iuser): Promise<IactivationTok
 export const verifyToken = async (token: string, otp: string): Promise<boolean> => {
     try {
         const decodedToken = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
-        if ('activationCode' in decodedToken) {
-            const otpVerified = await verifyPassword(otp, decodedToken.activationCode);
-            if (!otpVerified) return false;
-
-            const id: string = decodedToken?.id;
-            if (!id) return false;
-            // update in db
-            await prisma.user.update({
-                where: { id: id },
-                data: { isVerified: true }
-            })
-            return true;
-        } else {
-            return false;
-        }
+        const id: string | undefined = decodedToken?.id;
+        if (!id || typeof decodedToken.codeMac !== 'string' || !/^\d{6}$/.test(otp)) return false;
+        const expected = Buffer.from(codeMac(id, otp), 'hex');
+        const presented = Buffer.from(decodedToken.codeMac, 'hex');
+        if (expected.length !== presented.length || !timingSafeEqual(expected, presented)) return false;
+        await prisma.user.update({
+            where: { id },
+            data: { isVerified: true }
+        })
+        return true;
     } catch (error) {
         console.error("Error verifying token:", error);
         return false;
@@ -75,7 +74,8 @@ export const hashToken = (token: string): string =>
 export const generateAccessToken = (user: Iuser): string => {
     const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY || "5m";
     return jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        // name lets other services (receipts) address the user without a lookup
+        { id: user.id, email: user.email, role: user.role, name: user.name },
         process.env.ACCESS_TOKEN_SECRET!,
         { expiresIn: accessTokenExpiry } as SignOptions
     );

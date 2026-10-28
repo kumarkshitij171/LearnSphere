@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { catchAsyncError } from '../middleware/catchAsyncError';
 import ErrorHandler from '../utils/ErrorHandler';
 import { listUsers, setUserRole } from '../services/admin.service';
+import { listAllCourses } from '../services/course.service';
 
 export const getUsers = catchAsyncError(async (req: Request, res: Response) => {
   const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
@@ -26,4 +27,9 @@ export const changeUserRole = catchAsyncError(async (req: Request, res: Response
   }
   const user = await setUserRole(req.params.id, role as Role);
   return res.status(200).json({ success: true, user });
+});
+
+export const getAllCourses = catchAsyncError(async (_req: Request, res: Response) => {
+  const courses = await listAllCourses();
+  return res.status(200).json({ success: true, courses });
 });

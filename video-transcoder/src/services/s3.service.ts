@@ -6,7 +6,6 @@ import {
 import {
   createWriteStream,
   readFileSync,
-  unlinkSync,
   existsSync,
   mkdirSync,
   rmSync,
@@ -17,13 +16,12 @@ import { join } from 'path';
 import { config } from '../config/conf.js';
 import { logger } from '../utils/logger.js';
 
-// Endpoint is set for LocalStack and omitted for real AWS.
+// Endpoint is set for LocalStack and omitted for real AWS. Keys are passed only when set, so on
+// AWS the SDK's default chain (IAM role, SSO, ~/.aws) supplies credentials.
+const { accessKeyId, secretAccessKey } = config.aws;
 const s3Client = new S3Client({
   region: config.aws.region || 'us-east-1',
-  credentials: {
-    accessKeyId: config.aws.accessKeyId || '',
-    secretAccessKey: config.aws.secretAccessKey || '',
-  },
+  ...(accessKeyId && secretAccessKey && { credentials: { accessKeyId, secretAccessKey } }),
   ...(config.s3?.endpoint && { endpoint: config.s3.endpoint }),
   forcePathStyle: config.s3?.forcePathStyle ?? false,
 });
@@ -99,10 +97,11 @@ export const uploadVideoToS3 = async (
   }
 };
 
-/** Content type for HLS playlists and segments */
-const contentTypeFor = (key: string): string => {
+/** Content type for HLS playlists and segments, and the poster */
+export const contentTypeFor = (key: string): string => {
   if (key.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
   if (key.endsWith('.ts')) return 'video/MP2T';
+  if (key.endsWith('.jpg') || key.endsWith('.jpeg')) return 'image/jpeg';
   return 'application/octet-stream';
 };
 
@@ -179,22 +178,13 @@ export const uploadDirectoryToS3 = async (
   }
 };
 
-/**
- * Clean up temporary files and directories
- */
+/** Removes temp files and directories; never throws, since it runs on the failure path too. */
 export const cleanupTempFiles = (paths: string[]): void => {
-  paths.forEach((path) => {
+  for (const path of paths) {
     try {
-      if (existsSync(path)) {
-        if (existsSync(path) && require('fs').statSync(path).isDirectory()) {
-          rmSync(path, { recursive: true, force: true });
-        } else {
-          unlinkSync(path);
-        }
-        logger.debug(`Cleaned up: ${path}`);
-      }
+      rmSync(path, { recursive: true, force: true });
     } catch (error) {
       logger.warn(`Failed to cleanup ${path}`, { error });
     }
-  });
+  }
 };

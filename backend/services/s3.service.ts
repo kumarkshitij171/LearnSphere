@@ -4,6 +4,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutBucketCorsCommand,
   PutObjectCommand,
@@ -11,7 +12,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
-import { awsClientConfig } from '../config/awsConfig';
+import { awsClientConfig, isLocalStack } from '../config/awsConfig';
 
 type PresignedUploadResponse = { url: string; key: string };
 
@@ -28,7 +29,7 @@ const createS3Client = () =>
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
 
-const s3Client = createS3Client();
+export const s3Client = createS3Client();
 const ensuredBuckets = new Set<string>();
 
 // Allow the browser to PUT directly to the bucket via presigned URLs.
@@ -56,8 +57,10 @@ const applyBucketCors = async (bucket: string) => {
   );
 };
 
-const ensureBucketExists = async (bucket: string) => {
-  if (ensuredBuckets.has(bucket)) return;
+// Local convenience only. On AWS the buckets and their CORS are provisioned up front: names are
+// global, and the app's IAM role should not hold CreateBucket / PutBucketCORS.
+export const ensureBucketExists = async (bucket: string) => {
+  if (!isLocalStack() || ensuredBuckets.has(bucket)) return;
 
   const region = process.env.AWS_REGION || 'us-east-1';
 
@@ -163,6 +166,17 @@ export const generatePresignedDownloadURL = async (
 
 export const deleteS3Object = async (bucket: string, key: string): Promise<void> => {
   await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+};
+
+/** Whether an object is in the bucket — a retry needs the original upload to still be there. */
+export const s3ObjectExists = async (bucket: string, key: string): Promise<boolean> => {
+  try {
+    await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return true;
+  } catch (error: any) {
+    if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') return false;
+    throw error;
+  }
 };
 
 // Delete every object under a prefix (paginated) — used for HLS segment dirs.

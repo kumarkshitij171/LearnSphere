@@ -119,12 +119,12 @@ export function OtpInput({
           onFocus={(e) => e.target.select()}
           aria-label={`Digit ${i + 1}`}
           className={cn(
-            'h-14 w-full rounded-xl border bg-white/[0.03] text-center font-display text-2xl font-semibold text-foreground caret-primary transition-all',
-            'focus:outline-none focus:ring-2 focus:ring-primary/40',
+            'h-14 w-full rounded-xl border bg-surface text-center font-mono text-2xl font-medium tabular-nums text-foreground caret-foreground transition-colors',
+            'focus:bg-background focus:outline-none focus:ring-2 focus:ring-ring/10',
             hasError
-              ? 'border-destructive/60 focus:border-destructive focus:ring-destructive/30'
-              : 'border-white/10 hover:border-white/20 focus:border-primary/60',
-            value[i] && !hasError && 'border-primary/50 bg-primary/[0.06]',
+              ? 'border-danger/60 focus:border-danger'
+              : 'border-transparent focus:border-foreground/30',
+            value[i] && !hasError && 'border-foreground/15 bg-background',
             disabled && 'cursor-not-allowed opacity-50'
           )}
         />

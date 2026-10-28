@@ -22,13 +22,13 @@ function VerifyContent() {
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
+  const [resent, setResent] = useState<string | null>(null);
   const attempted = useRef(false);
 
   const verify = async (code: string) => {
     setError(null);
-    if (!/^\d{4}$/.test(code)) {
-      setError('Enter the 4-digit code from your email.');
+    if (!/^\d{6}$/.test(code)) {
+      setError('Enter the 6-digit code from your email.');
       return;
     }
     setVerifying(true);
@@ -55,8 +55,8 @@ function VerifyContent() {
     setError(null);
     setResending(true);
     try {
-      await usersApi.reverifyEmail(email);
-      setResent(true);
+      const { data } = await usersApi.reverifyEmail(email);
+      setResent(data?.message ?? 'A fresh code is on its way to your inbox.');
     } catch (err) {
       console.error('Resend error:', err);
       setError(
@@ -67,9 +67,9 @@ function VerifyContent() {
     }
   };
 
-  // Auto-verify when the email link already carries a full 4-digit code.
+  // Auto-verify when the email link already carries a full 6-digit code.
   useEffect(() => {
-    if (!attempted.current && otpFromUrl.length === 4) {
+    if (!attempted.current && otpFromUrl.length === 6) {
       attempted.current = true;
       verify(otpFromUrl);
     }
@@ -78,16 +78,16 @@ function VerifyContent() {
 
   return (
     <AuthShell>
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/30">
-        <MailCheck className="h-7 w-7 text-primary" />
+      <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-surface">
+        <MailCheck className="h-7 w-7 text-foreground" />
       </div>
 
       <div className="mt-6 space-y-2">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+        <h1 className="text-display-m">
           Verify your account
         </h1>
         <p className="text-muted-foreground">
-          Enter the 4-digit activation code we emailed you to finish setting up
+          Enter the 6-digit activation code we emailed you to finish setting up
           your account.
         </p>
       </div>
@@ -96,14 +96,14 @@ function VerifyContent() {
         <OtpInput
           value={otp}
           onChange={setOtp}
-          length={4}
+          length={6}
           hasError={!!error}
           disabled={verifying}
           onComplete={(code) => verify(code)}
         />
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+          <div className="flex items-start gap-2 rounded-[10px] bg-danger/10 px-3 py-2.5 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
             <span>{error}</span>
           </div>
@@ -112,7 +112,7 @@ function VerifyContent() {
         <Button
           onClick={() => verify(otp)}
           disabled={verifying || otp.length < 4}
-          className="h-11 w-full text-base"
+          className="h-11 w-full"
         >
           {verifying ? (
             <>
@@ -125,9 +125,7 @@ function VerifyContent() {
         </Button>
 
         {resent && (
-          <p className="text-center text-sm text-emerald-400">
-            A fresh code is on its way to your inbox.
-          </p>
+          <p className="text-center text-sm text-success">{resent}</p>
         )}
 
         <p className="text-center text-sm text-muted-foreground">
@@ -136,7 +134,7 @@ function VerifyContent() {
             type="button"
             onClick={resend}
             disabled={resending}
-            className="font-medium text-primary transition-colors hover:underline disabled:opacity-60"
+            className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground disabled:opacity-60"
           >
             {resending ? 'Sending...' : 'Resend code'}
           </button>
@@ -146,7 +144,7 @@ function VerifyContent() {
           Entered the wrong email?{' '}
           <Link
             href="/signup"
-            className="font-medium text-primary transition-colors hover:underline"
+            className="font-medium text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors hover:decoration-foreground"
           >
             Sign up again
           </Link>
@@ -161,7 +159,7 @@ export default function VerifyPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-background">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       }
     >

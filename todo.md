@@ -1,1634 +1,335 @@
-# 🎬 Video Transcoding Service - Implementation Todo
+# LearnSphere — Roadmap
 
-A comprehensive guide to building a scalable, cloud-native video transcoding service with Node.js, FFmpeg, Docker, AWS S3 + SQS, Kafka, Redis + BullMQ, and Kubernetes.
+**This is the live roadmap.** It is derived from the design documents, not a
+substitute for them: every item points at the design that explains *why*. If
+this file and a design document disagree, the design document wins and this file
+needs updating.
 
----
+| Where the reasoning lives | |
+|---|---|
+| `ARCHITECTURE.md` | system boundaries, current vs target topology, technology now/next, the scaling plan, deployment |
+| `DATABASE_DESIGN.md` | data ownership, schema boundaries, money, indexes, migrations, retention |
+| `<service>/SYSTEM_DESIGN.md` | per-service HLD, LLD and phase plan |
+| `docs/diagrams/` | diagram-as-code, rendered in the Eraser workspace **LearnSphere - System Architecture** |
 
-## 📋 Table of Contents
+The original pre-rewrite brain-dump is archived at
+`video-transcoder/docs/archive/original-todo.md`. It describes a design that was
+deliberately not built — nothing in it is outstanding work.
 
-1. [Architecture Overview](#architecture-overview)
-2. [Phase 1: Core Infrastructure Setup](#phase-1-core-infrastructure-setup)
-3. [Phase 2: AWS S3 Integration](#phase-2-aws-s3-integration)
-4. [Phase 3: SQS Event Handling](#phase-3-sqs-event-handling)
-5. [Phase 4: Kafka Integration](#phase-4-kafka-integration)
-6. [Phase 5: BullMQ + Redis Job Queue](#phase-5-bullmq--redis-job-queue)
-7. [Phase 6: Transcoding Workers](#phase-6-transcoding-workers)
-8. [Phase 7: API Server Implementation](#phase-7-api-server-implementation)
-9. [Phase 8: Frontend Integration](#phase-8-frontend-integration)
-10. [Phase 9: Docker & Kubernetes](#phase-9-docker--kubernetes)
-11. [Phase 10: Monitoring & Testing](#phase-10-monitoring--testing)
-
----
-
-## 🧠 Architecture Overview
-
-```
-Frontend (Next.js)
-   |
-   | (1) Request Presigned URL
-   v
-API Server (Node.js/Express)
-   |
-   | (2) Presigned Upload
-   v
-S3 (Raw Video Bucket)
-   |
-   | (3) ObjectCreated Event
-   v
-SQS Queue
-   |
-   | (4) Kafka Producer
-   v
-Kafka Topic (video-transcode)
-   |
-   | (5) BullMQ Producer
-   v
-Redis + BullMQ Queue
-   |
-   | (6) Worker Pods (FFmpeg)
-   v
-S3 (Processed Videos Bucket)
-   |
-   | (7) Status Update
-   v
-Database (Prisma/PostgreSQL)
-```
+**How to use this file.** Work proceeds one phase at a time. A phase is done when
+it compiles, runs, and does what it claimed — not when the code is written.
+Mark `[~]` for "written but unverified" rather than `[x]`; an honest `[~]` is
+worth more than an optimistic tick.
 
 ---
 
-## 📦 Phase 1: Core Infrastructure Setup
+## Where we actually are
 
-### 1.1 Install Required Dependencies
-
-**Backend Dependencies:**
-- [ ] Install AWS SDK v3: `npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner @aws-sdk/client-sqs`
-- [ ] Install Kafka client: `npm install kafkajs`
-- [ ] Install BullMQ: `npm install bullmq`
-- [ ] Install FFmpeg wrapper: `npm install fluent-ffmpeg @ffmpeg-installer/ffmpeg`
-- [ ] Install file utilities: `npm install multer multer-s3 uuid`
-- [ ] Install additional utilities: `npm install dotenv express-validator`
-
-**How to do it:**
-```bash
-cd backend
-npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner @aws-sdk/client-sqs kafkajs bullmq fluent-ffmpeg @ffmpeg-installer/ffmpeg multer multer-s3 uuid express-validator
-```
-
-### 1.2 Environment Variables Setup
-
-- [ ] Create `.env` file with all required variables
-- [ ] Add AWS credentials and region
-- [ ] Add S3 bucket names (raw and processed)
-- [ ] Add SQS queue URL
-- [ ] Add Kafka broker URLs
-- [ ] Add Redis connection details
-- [ ] Add database connection string
-
-**Required Environment Variables:**
-```env
-# AWS Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-
-# S3 Buckets
-S3_RAW_VIDEO_BUCKET=raw-video-bucket-name
-S3_PROCESSED_VIDEO_BUCKET=processed-video-bucket-name
-
-# SQS
-SQS_QUEUE_URL=https://sqs.region.amazonaws.com/account/queue-name
-
-# Kafka
-KAFKA_BROKERS=localhost:9092
-KAFKA_CLIENT_ID=video-transcode-service
-KAFKA_TOPIC_VIDEO_TRANSCODE=video-transcode
-
-# Redis + BullMQ
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_password
-```
-
-### 1.3 Database Schema Updates
-
-- [ ] Create Prisma schema for video metadata
-- [ ] Add Video model with fields: id, userId, originalKey, status, resolutions, createdAt, updatedAt
-- [ ] Add VideoTranscodeJob model for tracking jobs
-- [ ] Run migrations
-
-**Prisma Schema Example:**
-```prisma
-model Video {
-  id            String   @id @default(uuid())
-  userId        String
-  originalKey   String   // S3 key for original video
-  fileName      String
-  fileSize      Int
-  mimeType      String
-  status        VideoStatus @default(PENDING)
-  resolutions   Json     // Array of transcoded resolutions
-  metadata      Json?    // Video metadata (duration, codec, etc.)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  user          User     @relation(fields: [userId], references: [id])
-  transcodeJobs VideoTranscodeJob[]
-}
-
-model VideoTranscodeJob {
-  id          String   @id @default(uuid())
-  videoId     String
-  resolution  String   // e.g., "1080p", "720p", "480p"
-  status      JobStatus @default(QUEUED)
-  inputKey    String
-  outputKey   String?
-  error       String?
-  progress    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  video       Video    @relation(fields: [videoId], references: [id])
-}
-
-enum VideoStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
-enum JobStatus {
-  QUEUED
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-```
-
-**How to do it:**
-1. Update `backend/prisma/schema.prisma`
-2. Run `npx prisma migrate dev --name add_video_models`
-3. Generate Prisma client: `npx prisma generate`
+| Service | State |
+|---|---|
+| `frontend/` | **Working.** Auth, catalogue, admin, course management, upload component, HLS playback |
+| `backend/` | **Working.** Auth + RBAC + catalogue + video intake + internal API. Commerce Phase 0 shipped |
+| `video-transcoder/` | **Working.** Phases 1, 2, 3a done: Kafka → probe → source-aware HLS ladder (up to 4K, never upscaled, portrait kept) + poster → S3 → callback; serves HLS from S3 |
+| `notification-service/` | Phase 1 **compiles** (two fixes); Phase 1b seeding done. Never run against Mongo/Kafka |
+| `order-service/` | **Phases 1–6 written + unit-tested (48/48); not yet built with Maven** — needs network + Docker |
+| Tests | `backend/` has a Jest suite. **No tests anywhere else** |
+| Observability | No metrics backend, no tracing |
+| Deployment | `deploy/` manifests do not describe this system |
 
 ---
 
-## ☁️ Phase 2: AWS S3 Integration
+## P0 — Commerce
 
-### 2.1 AWS S3 Client Setup
+The revenue path. Design: `order-service/SYSTEM_DESIGN.md` Part III.
 
-- [ ] Create S3 service utility file: `backend/services/s3.service.ts`
-- [ ] Initialize S3 client with AWS SDK v3
-- [ ] Implement presigned URL generation for uploads
-- [ ] Implement presigned URL generation for downloads
-- [ ] Add error handling and logging
-
-**Implementation Steps:**
-
-1. **Create S3 Service:**
-```typescript
-// backend/services/s3.service.ts
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-export const generatePresignedUploadURL = async (
-  fileName: string,
-  contentType: string,
-  userId: string
-): Promise<{ url: string; key: string }> => {
-  const key = `uploads/${userId}/${uuidv4()}-${fileName}`;
-  
-  const command = new PutObjectCommand({
-    Bucket: process.env.S3_RAW_VIDEO_BUCKET!,
-    Key: key,
-    ContentType: contentType,
-  });
-  
-  const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-  
-  return { url, key };
-};
-
-export const generatePresignedDownloadURL = async (
-  key: string,
-  bucket: string
-): Promise<string> => {
-  const command = new GetObjectCommand({
-    Bucket: bucket,
-    Key: key,
-  });
-  
-  return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-};
-```
-
-### 2.2 S3 Bucket Configuration
-
-- [ ] Create raw video bucket in AWS S3
-- [ ] Create processed video bucket in AWS S3
-- [ ] Configure CORS for both buckets
-- [ ] Set up bucket policies for public/private access
-- [ ] Enable versioning (optional)
-- [ ] Configure lifecycle policies for old videos
-
-**CORS Configuration (Raw Video Bucket):**
-```json
-[
-  {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["PUT", "POST", "GET"],
-    "AllowedOrigins": ["http://localhost:3000", "https://yourdomain.com"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
-```
-
-**Bucket Policy (Processed Video Bucket - Read Access):**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadGetObject",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::processed-video-bucket/*"
-    }
-  ]
-}
-```
-
-### 2.3 S3 Event Notification Setup
-
-- [ ] Configure S3 bucket event notifications
-- [ ] Set up ObjectCreated event to trigger SQS
-- [ ] Filter events by file extension (.mp4, .mov, .avi, etc.)
-- [ ] Test event triggering
-
-**How to do it (AWS Console):**
-1. Go to S3 bucket → Properties → Event notifications
-2. Create event notification:
-   - Event type: `s3:ObjectCreated:*`
-   - Prefix: `uploads/`
-   - Suffix: `.mp4` (or other video formats)
-   - Destination: SQS Queue (select your queue)
-
-**How to do it (AWS CLI):**
-```bash
-aws s3api put-bucket-notification-configuration \
-  --bucket raw-video-bucket-name \
-  --notification-configuration file://notification-config.json
-```
+- [x] **Phase 0 — catalogue prerequisites in `backend/`**
+      `internalAuth.ts`, `internal.routes.ts`, `internal.controller.ts`,
+      `getCourseForCatalogue` + `getEnrollment`, `utils/money.ts`,
+      `Enrollment.orderId`/`source`/`revokedAt`, `Course.currency`.
+  - [~] `tests/integration/internal.routes.test.ts` — cannot compile without
+        network access for `prisma generate`. Run `npx prisma generate && npm test`
+        on a networked machine to close this out.
+- [~] **Phase 1 — order-service skeleton on the mock provider** — written, not yet Maven-built.
+      Phases 2–6 below are in the same state: code + unit tests, no real infra run yet
+  - [x] Align the scaffold: Java 21, Boot 4.0.3, `com.lms.order_service`, dependency set
+  - [x] Flyway `V1__orders_baseline.sql` — five tables (`refunds` lands as V2 in Phase 6), `ddl-auto=validate`
+  - [x] JWT filter + `OrderContextHolder`, fail-fast on missing secrets
+  - [x] `PaymentProvider` + `PaymentProviderRegistry` + `MockPaymentProvider` + dev mock gateway
+  - [x] `OrderStateMachine`, `CatalogueClient`, `POST /orders`, `GET /orders/{id}`
+  - [x] Outbox + `@Scheduled` relay with `FOR UPDATE SKIP LOCKED`
+  - [x] Unit tests — **48/48 pass** across Phases 1–6
+  - [~] `OrderFlowIntegrationTest` (Testcontainers) written, **not run** — needs Docker
+  - [ ] `./mvnw install` on a networked machine — blocked here on 9 undownloaded artifacts
+  - [ ] `@DataJpaTest` on the partial unique index (the race itself is covered by the integration test's replay cases)
+  - **Verify:** create an order against a real course, POST the dev mock webhook,
+    see `order.paid` land in Kafka UI on `:8080` — steps in `order-service/SYSTEM_DESIGN.md` Phase 1
+- [x] **Phase 2 — enrolment actually granted** — backend Jest 125/125; also fixed `isEnrolled` ignoring `revokedAt` and the re-grant upsert
+      `backend`'s first Kafka consumer; `enrollInCourse` gains `orderId`/`source`;
+      `POST /courses/:id/enroll` becomes an `INSTRUCTOR`/`ADMIN` grant endpoint
+      returning `402 { requiresOrder: true }` to students.
+  - **Verify:** the Phase 1 flow flips `GET /courses/:id` to `enrolled: true`, and
+    replaying the same event twice still yields one enrolment row
+- [x] **Phase 3 — receipts** — `NotificationPublisher`, `name` in the access token, notification-service seeding + compile fixes
+      `NotificationPublisher` writes `NotificationMessage`s to the outbox.
+      **No Java changes in `notification-service`** — but it needs its Phase 1
+      compiled and Phase 1b (template seeding) done first.
+  - **Verify:** an email arrives, and a redelivered `order.paid` does not send a
+    second one
+- [~] **Phase 4 — Razorpay + the frontend buy flow** (they land together; neither
+      is testable alone)
+  - [x] `RazorpayPaymentProvider`, signature verification against the raw body
+  - [x] Order expiry + the reconciliation sweeper (`FOR UPDATE SKIP LOCKED`, no leader election)
+  - [x] cancel / retry / providers endpoints, per-user Redis rate limit, CORS
+  - [x] Frontend: client factory, `orders.service.ts`, Buy flow, honest polling, purchases page
+  - [ ] **Observability for this service (`SYSTEM_DESIGN.md` §12.6) — not built.**
+        Still required **before** the first real payment
+  - [ ] Test-mode Razorpay run in a browser (needs keys + network)
+  - **Verify:** a test-mode card buys a course end to end in the browser; kill the
+    webhook deliberately and watch the sweeper recover the order
+- [x] **Phase 5 — Stripe.** The seam held: only `provider/stripe/` and config changed
+- [x] **Phase 6 — refunds and admin.** `RefundService`, admin endpoints,
+      `order.refunded` → enrolment revocation (full refunds only), purchase history + admin refund UI
 
 ---
 
-## 📨 Phase 3: SQS Event Handling
+## P1 — Playback off the transcoder
 
-### 3.1 SQS Queue Setup
+The highest-leverage scalability change available. Today every HLS segment is
+proxied through the Node process that also runs FFmpeg
+(`ARCHITECTURE.md` §6.2, `video-transcoder/SYSTEM_DESIGN.md` §4.1).
 
-- [ ] Create SQS queue in AWS Console
-- [ ] Configure queue settings (visibility timeout, message retention)
-- [ ] Set up dead-letter queue for failed messages
-- [ ] Get queue URL and ARN
-
-**Queue Configuration:**
-- Visibility Timeout: 300 seconds (5 minutes)
-- Message Retention Period: 14 days
-- Receive Message Wait Time: 20 seconds (long polling)
-- Maximum Receives: 3 (before moving to DLQ)
-
-### 3.2 SQS Consumer Service
-
-- [ ] Create SQS consumer service: `backend/services/sqs.service.ts`
-- [ ] Implement message polling
-- [ ] Parse S3 event from SQS message
-- [ ] Forward to Kafka producer
-- [ ] Handle message deletion after processing
-- [ ] Implement error handling and retry logic
-
-**Implementation Steps:**
-
-1. **Create SQS Service:**
-```typescript
-// backend/services/sqs.service.ts
-import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
-import { kafkaProducer } from './kafka.service';
-
-const sqsClient = new SQSClient({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-interface S3Event {
-  Records: Array<{
-    s3: {
-      bucket: { name: string };
-      object: { key: string; size: number };
-    };
-  }>;
-}
-
-export const startSQSConsumer = async () => {
-  while (true) {
-    try {
-      const command = new ReceiveMessageCommand({
-        QueueUrl: process.env.SQS_QUEUE_URL!,
-        MaxNumberOfMessages: 10,
-        WaitTimeSeconds: 20, // Long polling
-      });
-      
-      const response = await sqsClient.send(command);
-      
-      if (response.Messages && response.Messages.length > 0) {
-        for (const message of response.Messages) {
-          try {
-            const body = JSON.parse(message.Body || '{}');
-            const s3Event: S3Event = JSON.parse(body.Message || body);
-            
-            // Process each S3 record
-            for (const record of s3Event.Records) {
-              const bucket = record.s3.bucket.name;
-              const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
-              
-              // Send to Kafka
-              await kafkaProducer.send({
-                topic: process.env.KAFKA_TOPIC_VIDEO_TRANSCODE!,
-                messages: [{
-                  key: key,
-                  value: JSON.stringify({
-                    bucket,
-                    key,
-                    size: record.s3.object.size,
-                    timestamp: new Date().toISOString(),
-                  }),
-                }],
-              });
-              
-              console.log(`Forwarded S3 event to Kafka: ${key}`);
-            }
-            
-            // Delete message after successful processing
-            if (message.ReceiptHandle) {
-              await sqsClient.send(new DeleteMessageCommand({
-                QueueUrl: process.env.SQS_QUEUE_URL!,
-                ReceiptHandle: message.ReceiptHandle,
-              }));
-            }
-          } catch (error) {
-            console.error('Error processing SQS message:', error);
-            // Message will become visible again after visibility timeout
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error receiving SQS messages:', error);
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retry
-    }
-  }
-};
-```
-
-### 3.3 Start SQS Consumer
-
-- [ ] Initialize SQS consumer in main application file
-- [ ] Run consumer in separate process or worker thread
-- [ ] Add graceful shutdown handling
-
-**How to do it:**
-```typescript
-// backend/index.ts or backend/workers/sqs-consumer.ts
-import { startSQSConsumer } from './services/sqs.service';
-
-// Start SQS consumer
-startSQSConsumer().catch(console.error);
-```
+- [x] **transcoder Phase 1 — delete the dead weight, fail fast**
+  - [x] Delete `src/services/db.service.ts`, `prisma/`, the `postinstall`
+        `prisma generate`, `DATABASE_URL` (`DATABASE_DESIGN.md` §3.2)
+  - [x] Resolve `src/utils/transcode.js` vs the TypeScript source — not imported;
+        kept as the standalone POC, checked by `scripts/transcode.sh`
+  - [x] Require `TRANCODER_API_KEY`, both buckets and FFmpeg **at startup** —
+        today a missing key silently skips the callback and the video sits at
+        `UPLOADED` forever
+- [x] **transcoder Phase 2 — make the consumer honest**
+  - [x] Classify transient vs permanent and **rethrow** transient, so Kafka
+        actually redelivers. Today the handler swallows errors, which *commits*
+        the offset — the retry the comment promises does not happen
+  - [x] Heartbeat during the job, so a long encode is not evicted from the
+        consumer group mid-job (verified with a 72 s 4K job)
+  - [x] Bounded retry with backoff on the backend callback
+  - [x] Readiness that reports consumer-group membership
+  - **This is the prerequisite for running more than one replica**
+- [ ] **transcoder Phase 3 — output quality and parallelism** (3a done, 3b open)
+  - [x] **3a** — source-aware ladder (`video-transcoder/SYSTEM_DESIGN.md` §7.1):
+        probe first, native top rung up to 2160p, never upscaled, portrait and 4:3
+        kept undistorted, aligned keyframes, `veryfast`; duration, renditions and
+        a failure `errorCode` reported back; `poster.jpg` per video
+  - [ ] **3b** — encode rungs in parallel with a bounded worker count (or one decode + `split`)
+  - [ ] Optionally widen the callback with per-rung `jobs[]` so
+        `VideoTranscodeJob` finally gets rows and progress is real
+- [ ] **transcoder Phase 4 — CloudFront in front of `processed-videos`**
+      Signed URLs or cookies; delete the HLS mount; `frontend/lib/playback.ts`
+      points at the CDN
+- [ ] **frontend Phase 4 — upload UX**
+      Progress on the direct PUT; backoff polling with an honest terminal
+      message; branch on `status` before resolving a playback URL
+- [ ] **Verify the whole chain on local infra**, end to end in a browser
 
 ---
 
-## 🚀 Phase 4: Kafka Integration
+## P2 — Service split
 
-### 4.1 Kafka Setup
+Design: `backend/SYSTEM_DESIGN.md` §4 and Phase 7; `ARCHITECTURE.md` §4.2.
+**Do the backend layering phases first** — moving tangled code is how a
+migration becomes a rewrite.
 
-- [ ] Install and configure Kafka (local or cloud)
-- [ ] Create Kafka topic: `video-transcode`
-- [ ] Configure topic with appropriate partitions (e.g., 3-5)
-- [ ] Set up replication factor (if using cluster)
-
-**Local Kafka Setup (Docker):**
-```yaml
-# docker-compose.yml addition
-kafka:
-  image: confluentinc/cp-kafka:latest
-  environment:
-    KAFKA_BROKER_ID: 1
-    KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-    KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  ports:
-    - "9092:9092"
-  depends_on:
-    - zookeeper
-
-zookeeper:
-  image: confluentinc/cp-zookeeper:latest
-  environment:
-    ZOOKEEPER_CLIENT_PORT: 2181
-```
-
-**Create Topic:**
-```bash
-kafka-topics --create \
-  --bootstrap-server localhost:9092 \
-  --topic video-transcode \
-  --partitions 3 \
-  --replication-factor 1
-```
-
-### 4.2 Kafka Producer Service
-
-- [ ] Create Kafka producer service: `backend/services/kafka.service.ts`
-- [ ] Initialize Kafka client
-- [ ] Implement producer connection
-- [ ] Add error handling and retry logic
-- [ ] Implement graceful shutdown
-
-**Implementation Steps:**
-
-1. **Create Kafka Service:**
-```typescript
-// backend/services/kafka.service.ts
-import { Kafka } from 'kafkajs';
-
-const kafka = new Kafka({
-  clientId: process.env.KAFKA_CLIENT_ID || 'video-transcode-service',
-  brokers: process.env.KAFKA_BROKERS!.split(','),
-  retry: {
-    initialRetryTime: 100,
-    retries: 8,
-  },
-});
-
-export const kafkaProducer = kafka.producer();
-
-export const connectKafkaProducer = async () => {
-  await kafkaProducer.connect();
-  console.log('Kafka producer connected');
-};
-
-export const disconnectKafkaProducer = async () => {
-  await kafkaProducer.disconnect();
-  console.log('Kafka producer disconnected');
-};
-```
-
-### 4.3 Kafka Consumer Service
-
-- [ ] Create Kafka consumer service
-- [ ] Implement consumer group
-- [ ] Process messages from `video-transcode` topic
-- [ ] Forward messages to BullMQ queue
-- [ ] Implement commit offset logic
-
-**Implementation Steps:**
-
-1. **Create Kafka Consumer:**
-```typescript
-// backend/services/kafka-consumer.service.ts
-import { Kafka } from 'kafkajs';
-import { addTranscodeJob } from './bullmq.service';
-
-const kafka = new Kafka({
-  clientId: process.env.KAFKA_CLIENT_ID || 'video-transcode-service',
-  brokers: process.env.KAFKA_BROKERS!.split(','),
-});
-
-export const kafkaConsumer = kafka.consumer({ groupId: 'video-transcode-group' });
-
-export const startKafkaConsumer = async () => {
-  await kafkaConsumer.connect();
-  await kafkaConsumer.subscribe({ 
-    topic: process.env.KAFKA_TOPIC_VIDEO_TRANSCODE!,
-    fromBeginning: false 
-  });
-  
-  await kafkaConsumer.run({
-    eachMessage: async ({ topic, partition, message }) => {
-      try {
-        const data = JSON.parse(message.value?.toString() || '{}');
-        
-        // Add job to BullMQ queue
-        await addTranscodeJob({
-          bucket: data.bucket,
-          key: data.key,
-          size: data.size,
-        });
-        
-        console.log(`Added transcode job to BullMQ: ${data.key}`);
-      } catch (error) {
-        console.error('Error processing Kafka message:', error);
-      }
-    },
-  });
-  
-  console.log('Kafka consumer started');
-};
-```
-
-### 4.4 Initialize Kafka Services
-
-- [ ] Connect Kafka producer on application startup
-- [ ] Start Kafka consumer in separate process
-- [ ] Add error handling and reconnection logic
+- [ ] **backend Phase 1 — one Prisma client.** `new PrismaClient()` appears in
+      **seven** production files; each pool is `num_cpus × 2 + 1`, so one
+      eight-core process can reach ~119 connections against a `max_connections`
+      of 100, and two services cannot share a `$transaction`.
+      **This blocks running more than one backend replica.**
+- [ ] **backend Phase 2** — `auth.service.ts` rename + `persistSession`/`revokeSession`
+- [ ] **backend Phase 3** — user data access into `user.service.ts`; 9 call sites
+      out of `user.controller.ts`. The one phase with real risk
+- [ ] **backend Phase 4** — `ownership.ts` via `course.service`; ESLint with the
+      `no-restricted-imports` guard; delete the legacy presign route
+- [ ] **backend Phase 5** — split `auth.controller` from `user.controller`
+- [x] **backend Phase 6** — `prisma migrate` cutover (baseline `0_init`, verified on a scratch DB, resolved on dev) (`DATABASE_DESIGN.md` §8.2).
+      **Trigger: the first environment whose data we would be sorry to lose**
+- [ ] **Write `course-service/SYSTEM_DESIGN.md`** — it does not exist, and the
+      split must not start without it. Open questions it has to answer:
+      what it owns (`Course` + `Enrollment` + `Video`), and in what stack
+- [ ] **backend Phase 7** — move the course domain out; `backend` becomes
+      `auth-service`
 
 ---
 
-## 🔄 Phase 5: BullMQ + Redis Job Queue
+## P3 — Event ground truth
 
-### 5.1 Redis Setup
+Today `video.uploaded` is published by the backend's `confirm` call, so an upload
+that completes but is never confirmed is invisible. The object event is the truth.
+`backend/services/sqs.service.ts` already unwraps the SNS envelope LocalStack
+adds; `startSQSConsumer` is written and **never invoked** — keep it, do not delete.
 
-- [ ] Install and configure Redis (local or cloud)
-- [ ] Set up Redis connection
-- [ ] Configure Redis persistence (optional)
-- [ ] Test Redis connection
-
-**Redis Docker Setup:**
-```yaml
-# docker-compose.yml addition
-redis:
-  image: redis:7-alpine
-  ports:
-    - "6379:6379"
-  command: redis-server --appendonly yes
-  volumes:
-    - redis-data:/data
-
-volumes:
-  redis-data:
-```
-
-### 5.2 BullMQ Queue Setup
-
-- [ ] Create BullMQ queue: `backend/services/bullmq.service.ts`
-- [ ] Initialize Redis connection for BullMQ
-- [ ] Create transcode queue with job options
-- [ ] Configure retry and backoff strategies
-- [ ] Set up job priorities
-
-**Implementation Steps:**
-
-1. **Create BullMQ Service:**
-```typescript
-// backend/services/bullmq.service.ts
-import { Queue, Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
-
-const connection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD,
-  maxRetriesPerRequest: null,
-});
-
-export const transcodeQueue = new Queue('video-transcode', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-    removeOnComplete: {
-      age: 3600, // Keep completed jobs for 1 hour
-      count: 1000, // Keep max 1000 completed jobs
-    },
-    removeOnFail: {
-      age: 24 * 3600, // Keep failed jobs for 24 hours
-    },
-  },
-});
-
-interface TranscodeJobData {
-  bucket: string;
-  key: string;
-  size: number;
-  videoId?: string;
-  resolutions?: string[];
-}
-
-export const addTranscodeJob = async (data: TranscodeJobData) => {
-  return await transcodeQueue.add('transcode-video', data, {
-    priority: data.size > 100 * 1024 * 1024 ? 1 : 5, // Larger files get lower priority
-  });
-};
-
-// Job progress tracking
-export const updateJobProgress = async (jobId: string, progress: number) => {
-  const job = await transcodeQueue.getJob(jobId);
-  if (job) {
-    await job.updateProgress(progress);
-  }
-};
-```
-
-### 5.3 BullMQ Worker Setup
-
-- [ ] Create BullMQ worker for processing jobs
-- [ ] Implement worker in separate file: `backend/workers/transcode.worker.ts`
-- [ ] Connect to transcoding service
-- [ ] Handle job completion and failure
-- [ ] Update job progress
-
-**Implementation Steps:**
-
-1. **Create Worker:**
-```typescript
-// backend/workers/transcode.worker.ts
-import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
-import { processVideoTranscode } from '../services/transcode.service';
-
-const connection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD,
-  maxRetriesPerRequest: null,
-});
-
-export const transcodeWorker = new Worker(
-  'video-transcode',
-  async (job: Job) => {
-    const { bucket, key, size, videoId, resolutions } = job.data;
-    
-    console.log(`Processing transcode job ${job.id} for ${key}`);
-    
-    // Update progress
-    await job.updateProgress(10);
-    
-    // Process video transcoding
-    const result = await processVideoTranscode({
-      bucket,
-      key,
-      size,
-      videoId,
-      resolutions: resolutions || ['1080p', '720p', '480p', '360p'],
-      jobId: job.id!,
-      updateProgress: (progress: number) => job.updateProgress(progress),
-    });
-    
-    await job.updateProgress(100);
-    
-    return result;
-  },
-  {
-    connection,
-    concurrency: 2, // Process 2 jobs concurrently
-    limiter: {
-      max: 5, // Max 5 jobs
-      duration: 10000, // Per 10 seconds
-    },
-  }
-);
-
-transcodeWorker.on('completed', (job) => {
-  console.log(`Job ${job.id} completed`);
-});
-
-transcodeWorker.on('failed', (job, err) => {
-  console.error(`Job ${job?.id} failed:`, err);
-});
-```
-
-### 5.4 Queue Monitoring
-
-- [ ] Add queue monitoring endpoints
-- [ ] Implement job status checking
-- [ ] Add queue metrics (waiting, active, completed, failed)
+- [ ] `s3:ObjectCreated` → SNS → SQS on `raw-videos`
+- [ ] Invoke `startSQSConsumer` and bridge SQS → Kafka
+- [ ] Reconcile with the `confirm` path so a video is not transcoded twice
+      (the `Video.status` guard is the dedup point)
+- [ ] Decide `bullmq`'s fate: it is a dependency imported nowhere, kept
+      deliberately. It only earns its place if a Node service needs delayed or
+      scheduled jobs that Kafka models badly (`ARCHITECTURE.md` §5.2)
 
 ---
 
-## 🎥 Phase 6: Transcoding Workers
+## P4 — Notifications
 
-### 6.1 FFmpeg Installation
+Design: `notification-service/SYSTEM_DESIGN.md` §12.
 
-- [ ] Install FFmpeg in Docker container
-- [ ] Verify FFmpeg installation
-- [ ] Test FFmpeg commands
-
-**Dockerfile for Transcoding Worker:**
-```dockerfile
-FROM node:18-alpine
-
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-
-CMD ["node", "workers/transcode.worker.js"]
-```
-
-### 6.2 Transcoding Service
-
-- [ ] Create transcoding service: `backend/services/transcode.service.ts`
-- [ ] Implement video download from S3
-- [ ] Implement parallel transcoding for multiple resolutions
-- [ ] Implement video upload to processed bucket
-- [ ] Add progress tracking
-- [ ] Handle errors and cleanup
-
-**Implementation Steps:**
-
-1. **Create Transcoding Service:**
-```typescript
-// backend/services/transcode.service.ts
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { createWriteStream, unlinkSync, existsSync } from 'fs';
-import { pipeline } from 'stream/promises';
-import ffmpeg from 'fluent-ffmpeg';
-import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-interface TranscodeOptions {
-  bucket: string;
-  key: string;
-  size: number;
-  videoId?: string;
-  resolutions: string[];
-  jobId: string;
-  updateProgress: (progress: number) => Promise<void>;
-}
-
-const resolutionConfigs: Record<string, { width: number; height: number; bitrate: string }> = {
-  '1080p': { width: 1920, height: 1080, bitrate: '5000k' },
-  '720p': { width: 1280, height: 720, bitrate: '2500k' },
-  '480p': { width: 854, height: 480, bitrate: '1000k' },
-  '360p': { width: 640, height: 360, bitrate: '600k' },
-};
-
-export const processVideoTranscode = async (options: TranscodeOptions) => {
-  const { bucket, key, resolutions, jobId, updateProgress } = options;
-  const tempDir = `/tmp/transcode-${jobId}`;
-  const inputPath = path.join(tempDir, 'input.mp4');
-  const outputPaths: Record<string, string> = {};
-  
-  try {
-    // Create temp directory
-    if (!existsSync(tempDir)) {
-      require('fs').mkdirSync(tempDir, { recursive: true });
-    }
-    
-    // Download video from S3
-    await updateProgress(10);
-    const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
-    const response = await s3Client.send(getObjectCommand);
-    const writeStream = createWriteStream(inputPath);
-    await pipeline(response.Body as NodeJS.ReadableStream, writeStream);
-    await updateProgress(20);
-    
-    // Transcode to multiple resolutions in parallel
-    const transcodePromises = resolutions.map(async (resolution) => {
-      const config = resolutionConfigs[resolution];
-      const outputPath = path.join(tempDir, `output-${resolution}.mp4`);
-      outputPaths[resolution] = outputPath;
-      
-      return new Promise<void>((resolve, reject) => {
-        ffmpeg(inputPath)
-          .size(`${config.width}x${config.height}`)
-          .videoBitrate(config.bitrate)
-          .format('mp4')
-          .videoCodec('libx264')
-          .audioCodec('aac')
-          .on('progress', async (progress) => {
-            const totalProgress = 20 + (progress.percent || 0) * 0.7; // 20-90%
-            await updateProgress(Math.min(totalProgress, 90));
-          })
-          .on('end', () => {
-            console.log(`Transcoding completed for ${resolution}`);
-            resolve();
-          })
-          .on('error', (err) => {
-            console.error(`Transcoding error for ${resolution}:`, err);
-            reject(err);
-          })
-          .save(outputPath);
-      });
-    });
-    
-    await Promise.all(transcodePromises);
-    await updateProgress(90);
-    
-    // Upload transcoded videos to S3
-    const uploadPromises = Object.entries(outputPaths).map(async ([resolution, filePath]) => {
-      const outputKey = `processed/${key.replace('uploads/', '').replace(/\.[^/.]+$/, '')}-${resolution}.mp4`;
-      
-      const fileContent = require('fs').readFileSync(filePath);
-      const putObjectCommand = new PutObjectCommand({
-        Bucket: process.env.S3_PROCESSED_VIDEO_BUCKET!,
-        Key: outputKey,
-        Body: fileContent,
-        ContentType: 'video/mp4',
-      });
-      
-      await s3Client.send(putObjectCommand);
-      return { resolution, key: outputKey };
-    });
-    
-    const uploadedFiles = await Promise.all(uploadPromises);
-    await updateProgress(100);
-    
-    // Cleanup temp files
-    Object.values(outputPaths).forEach(filePath => {
-      if (existsSync(filePath)) unlinkSync(filePath);
-    });
-    if (existsSync(inputPath)) unlinkSync(inputPath);
-    if (existsSync(tempDir)) require('fs').rmdirSync(tempDir);
-    
-    return {
-      success: true,
-      resolutions: uploadedFiles,
-    };
-  } catch (error) {
-    // Cleanup on error
-    Object.values(outputPaths).forEach(filePath => {
-      if (existsSync(filePath)) unlinkSync(filePath);
-    });
-    if (existsSync(inputPath)) unlinkSync(inputPath);
-    
-    throw error;
-  }
-};
-```
-
-### 6.3 Parallel Processing Optimization
-
-- [ ] Implement worker pool for parallel FFmpeg processes
-- [ ] Add CPU and memory monitoring
-- [ ] Implement resource limits per worker
-- [ ] Add queue-based load balancing
-
-### 6.4 Video Metadata Extraction
-
-- [ ] Extract video metadata (duration, codec, resolution)
-- [ ] Store metadata in database
-- [ ] Use metadata for validation and optimization
+- [~] **Phase 1 — email end to end.** **Compiles** (fixed an uncatchable interface and
+      the Jackson 2 → 3 mismatch). Not yet run against Mongo/Kafka/SMTP
+- [x] **Phase 1b — template seeding.** `resources/seed-templates/*.json` + `TemplateSeeder`.
+      `account-activation` not ported yet (needed only for the Phase 5 cutover)
+- [ ] **Phase 2 — push via FCM.** `firebase-admin`, `PushSender`,
+      `sendEachForMulticast`, deactivate `UNREGISTERED` tokens. Frontend: service
+      worker, `getToken()`, `POST /api/v1/devices` after login
+- [ ] **Phase 3 — retry topic, DLQ, admin replay**
+- [ ] **Phase 4 — rate limiting + metrics.** Redis sliding window per
+      `(tenantId, channel)` so one tenant's blast cannot starve another's
+      transactional mail
+- [ ] **Phase 5 — SMS, and the backend cutover.** Port
+      `backend/views/activationMail.ejs` to an `account-activation` template,
+      replace the `sendMail()` call in `registerUser` with a Kafka publish, then
+      delete the backend's nodemailer path. **Deliberately last** — signup works
+      today and there is no reason to risk it before the delivery path has
+      proven itself
 
 ---
 
-## 🌐 Phase 7: API Server Implementation
+## UI configuration
 
-### 7.1 Video Upload Controller
+Design: `backend/SYSTEM_DESIGN.md` Part IV (storage, contract, phases) and
+`frontend/SYSTEM_DESIGN.md` Part IV (consumption, the VS Code-style editor).
+**U1–U4 built.** Run `npx prisma db push` (3 new tables) and `npm install` in `frontend/`.
 
-- [ ] Create video upload controller: `backend/controllers/videoUpload.controller.ts`
-- [ ] Implement presigned URL generation endpoint
-- [ ] Implement video metadata creation endpoint
-- [ ] Add validation middleware
-- [ ] Add authentication middleware
+- [x] **U1 — contract + storage.** Jest 38 new tests; validator is in-house (no `ajv` offline). JSON Schema + default in `backend/config/ui/`,
+      Prisma models, ajv validator, public read + admin routes, seed on boot, export script
+- [x] **U2 — frontend reads config.** Server-side fetch in the root layout, provider,
+      fallback to today's UI; sidebar, brand, announcement, feature toggles
+- [x] **U3 — the editor.** Not yet opened in a browser `/admin/ui-config`: Monaco diff, schema validation +
+      autocomplete, Problems, autosave draft, publish, timeline, rollback
+- [x] **U4 — preview, compare any two versions, theme tokens**
+- [ ] `npm run build` + Playwright: admin edits a label → publish → sidebar shows it; student gets redirected and 403
 
-**Implementation Steps:**
+## UI — visual design language
 
-1. **Create Controller:**
-```typescript
-// backend/controllers/videoUpload.controller.ts
-import { Request, Response, NextFunction } from 'express';
-import { generatePresignedUploadURL } from '../services/s3.service';
-import { prisma } from '../utils/db';
-import { addTranscodeJob } from '../services/bullmq.service';
+Design: `frontend/SYSTEM_DESIGN.md` Part VIII. **Direction A · Studio agreed and built (28 Oct 2026).**
+Replaced the generated look (glass, gradient text, lime-on-black, fabricated stats and testimonials).
 
-export const generatePresignedURL = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { fileName, fileSize, mimeType } = req.body;
-    const userId = req.user?.id; // From auth middleware
-    
-    if (!fileName || !fileSize || !mimeType) {
-      return res.status(400).json({
-        success: false,
-        message: 'fileName, fileSize, and mimeType are required',
-      });
-    }
-    
-    // Validate file type
-    const allowedTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
-    if (!allowedTypes.includes(mimeType)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file type. Only MP4, MOV, and AVI are allowed',
-      });
-    }
-    
-    // Generate presigned URL
-    const { url, key } = await generatePresignedUploadURL(fileName, mimeType, userId);
-    
-    // Create video record in database
-    const video = await prisma.video.create({
-      data: {
-        userId,
-        originalKey: key,
-        fileName,
-        fileSize: parseInt(fileSize),
-        mimeType,
-        status: 'PENDING',
-        resolutions: [],
-      },
-    });
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        uploadUrl: url,
-        videoId: video.id,
-        key,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+- [x] **V0a** — semantic tokens, codemod over 44 files (300 replacements), `check-styles` in `npm run lint`
+- [x] **V0b** — UI-config **v2** (`mode` + `highlight`, migration, Jest), studio/theater tokens, Geist, primitives, player scoped dark; **live DB published to v3**
+- [x] **V1** — app shell, ⌘K palette, dashboard (student, instructor, empty), `lib/activity.ts` (Vitest), viewer light/dark toggle
+- [x] **V2** — landing + auth pages from config (features, instructor steps, FAQ, CTA, auth panel); no invented claims
+- [~] **V3** — course/lesson thumbnails + `coverVideoId` + random poster frame (backend/transcoder by agent; verify), covers, Explore
+- [x] **V4** — studio/admin/purchases restyled by codemod pass 2; `check-styles` bans blur, gradients, 2xl/3xl radius, `font-display`
+- [~] **In-app notification inbox** — `IN_APP` channel + `/notifications/inbox` (notification-service), bell popover (frontend)
+- [ ] **Push (FCM)** — waiting on a Firebase project: web config in `frontend/.env.local`, service-account JSON + `PUSH_ENABLED=true` in `notification-service/.env`
 
-export const confirmUpload = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { videoId } = req.body;
-    const userId = req.user?.id;
-    
-    const video = await prisma.video.findUnique({
-      where: { id: videoId, userId },
-    });
-    
-    if (!video) {
-      return res.status(404).json({
-        success: false,
-        message: 'Video not found',
-      });
-    }
-    
-    // Update status - SQS will trigger processing
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { status: 'PROCESSING' },
-    });
-    
-    res.status(200).json({
-      success: true,
-      message: 'Upload confirmed. Processing will start shortly.',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-```
+## P5 — Operability
 
-### 7.2 Video Status Controller
+Nothing here is optional before real users; it is only cheap to defer while
+there are none.
 
-- [ ] Create video status endpoint
-- [ ] Return current transcoding status
-- [ ] Return available resolutions
-- [ ] Return presigned URLs for transcoded videos
-
-**Implementation:**
-```typescript
-export const getVideoStatus = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { videoId } = req.params;
-    const userId = req.user?.id;
-    
-    const video = await prisma.video.findUnique({
-      where: { id: videoId, userId },
-      include: { transcodeJobs: true },
-    });
-    
-    if (!video) {
-      return res.status(404).json({
-        success: false,
-        message: 'Video not found',
-      });
-    }
-    
-    // Generate presigned URLs for completed transcodes
-    const resolutions = await Promise.all(
-      (video.resolutions as any[]).map(async (res: any) => ({
-        ...res,
-        url: await generatePresignedDownloadURL(
-          res.key,
-          process.env.S3_PROCESSED_VIDEO_BUCKET!
-        ),
-      }))
-    );
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        videoId: video.id,
-        status: video.status,
-        resolutions,
-        metadata: video.metadata,
-        createdAt: video.createdAt,
-        updatedAt: video.updatedAt,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-```
-
-### 7.3 Routes Setup
-
-- [ ] Create video routes: `backend/routes/videoUpload.routes.ts`
-- [ ] Add authentication middleware
-- [ ] Add validation middleware
-- [ ] Connect routes to controller
-
-**Implementation:**
-```typescript
-// backend/routes/videoUpload.routes.ts
-import express from 'express';
-import {
-  generatePresignedURL,
-  confirmUpload,
-  getVideoStatus,
-} from '../controllers/videoUpload.controller';
-import { isAuthenticated } from '../middleware/auth';
-
-const router = express.Router();
-
-router.post('/presigned-url', isAuthenticated, generatePresignedURL);
-router.post('/confirm-upload', isAuthenticated, confirmUpload);
-router.get('/status/:videoId', isAuthenticated, getVideoStatus);
-
-export default router;
-```
-
-### 7.4 Database Update Service
-
-- [ ] Create service to update video status in database
-- [ ] Update status when transcoding starts
-- [ ] Update status when transcoding completes
-- [ ] Store transcoded video keys
+- [ ] **Settle the port disagreements.** `backend` defaults to `5000` and the
+      frontend expects `5001`; the transcoder defaults to `7000` and the frontend
+      expects `7070`. One decision, then fix `.env.sample`, `frontend/src/config/env.ts`,
+      `README.md` and `deploy/lms-deployment.yaml` **together** (`ARCHITECTURE.md` §9)
+- [ ] **Metrics.** `micrometer-registry-prometheus` in both Spring services
+      (Actuator is already on the classpath), Prometheus + Grafana
+- [ ] **Tracing.** OpenTelemetry, with the trace id propagated onto Kafka headers
+      so a purchase can be followed across four processes
+- [ ] **Alerts that matter:** outbox depth rising, any amount mismatch, any
+      invalid webhook signature, DLQ non-zero, `PENDING` order backlog growing
+- [ ] **Fix `deploy/lms-deployment.yaml`** — it declares `containerPort: 3000`
+      for the backend, one replica everywhere, and no `order-service`
+- [ ] **Health probes** on every service; readiness gated on the datastore
+- [ ] **Ingress with one origin**, path-routed, so the auth cookie keeps working
+      across services in production (also needed by commerce Phase 4)
+- [ ] **Managed stateful services** in production: RDS, ElastiCache, MSK,
+      DocumentDB or Atlas. The compose file stays the dev story
+- [ ] **Secrets** out of env files into SSM / Secrets Manager
+- [ ] **CI**: `prisma generate` → `npm test` → `./mvnw test` → build. Note the
+      ordering: without `prisma generate`, every backend suite importing a route
+      fails to *compile* and it looks like a broken test suite
 
 ---
 
-## 💻 Phase 8: Frontend Integration
+## Tests — the standing gap
 
-### 8.1 Upload Component
+`backend/` has Jest. Nothing else has anything.
 
-- [ ] Create video upload component
-- [ ] Request presigned URL from backend
-- [ ] Upload video directly to S3
-- [ ] Show upload progress
-- [ ] Handle upload errors
-
-**Implementation Steps:**
-
-1. **Create Upload Component:**
-```typescript
-// frontend/src/components/VideoUpload.tsx
-'use client';
-
-import { useState } from 'react';
-import axios from 'axios';
-
-export default function VideoUpload() {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [videoId, setVideoId] = useState<string | null>(null);
-  
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
-  
-  const handleUpload = async () => {
-    if (!file) return;
-    
-    try {
-      setUploading(true);
-      
-      // Step 1: Get presigned URL
-      const { data } = await axios.post('/api/videos/presigned-url', {
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-      });
-      
-      setVideoId(data.data.videoId);
-      
-      // Step 2: Upload directly to S3
-      await axios.put(data.data.uploadUrl, file, {
-        headers: {
-          'Content-Type': file.type,
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / (progressEvent.total || 1)
-          );
-          setProgress(percentCompleted);
-        },
-      });
-      
-      // Step 3: Confirm upload
-      await axios.post('/api/videos/confirm-upload', {
-        videoId: data.data.videoId,
-      });
-      
-      alert('Upload successful! Processing will start shortly.');
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
-    }
-  };
-  
-  return (
-    <div>
-      <input type="file" accept="video/*" onChange={handleFileSelect} />
-      <button onClick={handleUpload} disabled={!file || uploading}>
-        {uploading ? `Uploading... ${progress}%` : 'Upload Video'}
-      </button>
-    </div>
-  );
-}
-```
-
-### 8.2 Status Polling Component
-
-- [ ] Create component to poll video status
-- [ ] Display transcoding progress
-- [ ] Show available resolutions
-- [ ] Display video player when ready
-
-**Implementation:**
-```typescript
-// frontend/src/components/VideoStatus.tsx
-'use client';
-
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-
-export default function VideoStatus({ videoId }: { videoId: string }) {
-  const [status, setStatus] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    const pollStatus = async () => {
-      try {
-        const { data } = await axios.get(`/api/videos/status/${videoId}`);
-        setStatus(data.data);
-        
-        // Continue polling if still processing
-        if (data.data.status === 'PROCESSING') {
-          setTimeout(pollStatus, 5000); // Poll every 5 seconds
-        }
-      } catch (error) {
-        console.error('Error fetching status:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    pollStatus();
-  }, [videoId]);
-  
-  if (loading) return <div>Loading...</div>;
-  
-  return (
-    <div>
-      <h3>Status: {status?.status}</h3>
-      {status?.resolutions && status.resolutions.length > 0 && (
-        <div>
-          <h4>Available Resolutions:</h4>
-          {status.resolutions.map((res: any) => (
-            <video key={res.resolution} controls width="640">
-              <source src={res.url} type="video/mp4" />
-            </video>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-### 8.3 API Integration
-
-- [ ] Create API route handlers in Next.js
-- [ ] Add authentication headers
-- [ ] Handle errors gracefully
-- [ ] Add loading states
+- [ ] **`order-service`** — non-negotiable, it is the service that can lose money.
+      State machine exhaustively; each provider's signature verifier against
+      captured real payloads; `@DataJpaTest` for the partial unique indexes;
+      Testcontainers for the full chain
+- [ ] **`video-transcoder`** — done: `master.m3u8` generation (every
+      `#EXT-X-STREAM-INF` followed by its URI), error classification, the ladder,
+      probe and poster against the real binaries. Still to do: the HLS path
+      normaliser against traversal, LocalStack round-trip, one 3-second fixture
+      end to end
+- [ ] **`frontend`** — the interceptor (five concurrent 401s → exactly one
+      refresh), `env.ts`, `playback.ts`, one Playwright happy path
+- [ ] **`notification-service`** — template rendering, error classification,
+      the idempotency claim
+- [ ] **Contract tests** on the shared envelopes (`video.uploaded`,
+      `order.paid`, `NotificationMessage`) so an additive-only promise is
+      actually enforced
 
 ---
 
-## 🐳 Phase 9: Docker & Kubernetes
+## Data hygiene — small, easy to forget
 
-### 9.1 Docker Setup
+From `DATABASE_DESIGN.md` §9 and §11.
 
-- [ ] Create Dockerfile for API server
-- [ ] Create Dockerfile for transcoding worker
-- [ ] Create docker-compose.yml for local development
-- [ ] Test Docker containers locally
-
-**Dockerfile for API Server:**
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-
-RUN npm run build
-
-EXPOSE 8000
-
-CMD ["node", "dist/index.js"]
-```
-
-**Dockerfile for Transcoding Worker:**
-```dockerfile
-FROM node:18-alpine
-
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-
-RUN npm run build
-
-CMD ["node", "dist/workers/transcode.worker.js"]
-```
-
-**docker-compose.yml:**
-```yaml
-version: '3.8'
-
-services:
-  api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_HOST=redis
-      - KAFKA_BROKERS=kafka:9092
-    depends_on:
-      - redis
-      - kafka
-      - postgres
-
-  transcode-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    environment:
-      - NODE_ENV=production
-      - REDIS_HOST=redis
-      - AWS_REGION=${AWS_REGION}
-    depends_on:
-      - redis
-    deploy:
-      replicas: 3
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-    depends_on:
-      - zookeeper
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: lms
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-volumes:
-  redis-data:
-  postgres-data:
-```
-
-### 9.2 Kubernetes Configuration
-
-- [ ] Create Kubernetes namespace
-- [ ] Create ConfigMap for environment variables
-- [ ] Create Secrets for sensitive data
-- [ ] Create Deployment for API server
-- [ ] Create Deployment for transcoding workers
-- [ ] Create Service for API server
-- [ ] Create HorizontalPodAutoscaler for workers
-- [ ] Create Ingress for external access
-
-**Kubernetes Deployment Example:**
-```yaml
-# k8s/api-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: video-api
-  namespace: video-transcode
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: video-api
-  template:
-    metadata:
-      labels:
-        app: video-api
-    spec:
-      containers:
-      - name: api
-        image: your-registry/video-api:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: video-secrets
-              key: database-url
-        - name: REDIS_HOST
-          value: "redis-service"
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: video-api-service
-  namespace: video-transcode
-spec:
-  selector:
-    app: video-api
-  ports:
-  - port: 80
-    targetPort: 8000
-  type: LoadBalancer
-```
-
-**Worker Deployment with Autoscaling:**
-```yaml
-# k8s/worker-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: transcode-worker
-  namespace: video-transcode
-spec:
-  replicas: 5
-  selector:
-    matchLabels:
-      app: transcode-worker
-  template:
-    metadata:
-      labels:
-        app: transcode-worker
-    spec:
-      containers:
-      - name: worker
-        image: your-registry/transcode-worker:latest
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1000m"
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: transcode-worker-hpa
-  namespace: video-transcode
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: transcode-worker
-  minReplicas: 3
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
-### 9.3 CI/CD Pipeline
-
-- [ ] Set up GitHub Actions or GitLab CI
-- [ ] Build Docker images
-- [ ] Push to container registry
-- [ ] Deploy to Kubernetes
-- [ ] Run tests before deployment
+- [ ] Drop `User.courses String[]` — legacy, `Enrollment` is authoritative.
+      Cheapest moment is the Phase 6 migration baseline
+- [ ] Retention jobs: `outbox` 30 days post-publish, `webhook_events.payload`
+      12 months, `notifications` ledger 90 days (TTL index), S3 `raw-videos`
+      lifecycle after successful transcode
+- [ ] The indexes named in §3.3 — catalogue listing first, with the caching work
+- [ ] **User deletion / erasure touches three stores** and cannot be one
+      `DELETE`. Nothing implements it. Recorded so it is not discovered during an
+      audit
+- [ ] Decide `Course` soft delete (`archivedAt`) — deleting a course with paid
+      enrolments would orphan receipts, and there is no policy today
 
 ---
 
-## 📊 Phase 10: Monitoring & Testing
+## Deferred, recorded so it is not silently re-litigated
 
-### 10.1 Logging
+Carts and multi-item orders · coupons · subscriptions · instructor payouts ·
+tax/GST · multi-currency · invoice PDFs · DRM · per-title encoding · thumbnails
+and sprites · subtitles · live streaming · GraphQL · service mesh · a repository
+layer in `backend/` · i18n · PWA · SSR of authenticated pages.
 
-- [ ] Set up structured logging (Winston/Pino)
-- [ ] Add request logging middleware
-- [ ] Log transcoding progress
-- [ ] Log errors with context
-
-### 10.2 Monitoring
-
-- [ ] Set up Prometheus metrics
-- [ ] Monitor queue lengths
-- [ ] Monitor transcoding duration
-- [ ] Monitor error rates
-- [ ] Set up Grafana dashboards
-
-### 10.3 Error Handling
-
-- [ ] Implement comprehensive error handling
-- [ ] Add retry mechanisms
-- [ ] Set up dead-letter queues
-- [ ] Implement alerting
-
-### 10.4 Testing
-
-- [ ] Write unit tests for services
-- [ ] Write integration tests for API
-- [ ] Test transcoding pipeline end-to-end
-- [ ] Load testing with multiple videos
-- [ ] Test failure scenarios
-
-### 10.5 Documentation
-
-- [ ] Document API endpoints
-- [ ] Document deployment process
-- [ ] Create architecture diagrams
-- [ ] Write operational runbooks
+Each has a trigger written down in the design doc that rejected it. Reopen on
+the trigger, not on taste.
 
 ---
 
-## 🔧 Additional Considerations
+## Open questions blocking work
 
-### Performance Optimization
+Answer these and several phases unblock at once. Full context at
+`ARCHITECTURE.md` §9.
 
-- [ ] Implement video thumbnail generation
-- [ ] Add video preview generation
-- [ ] Optimize FFmpeg parameters for faster transcoding
-- [ ] Implement caching for frequently accessed videos
-- [ ] Use CDN for video delivery
-
-### Security
-
-- [ ] Implement rate limiting
-- [ ] Add file size limits
-- [ ] Validate file types server-side
-- [ ] Implement virus scanning (optional)
-- [ ] Add CORS configuration
-- [ ] Secure S3 bucket policies
-
-### Cost Optimization
-
-- [ ] Implement video cleanup for old/unused videos
-- [ ] Use S3 lifecycle policies
-- [ ] Optimize worker resource allocation
-- [ ] Monitor and alert on costs
-
-### Scalability
-
-- [ ] Implement horizontal scaling for workers
-- [ ] Use message batching where possible
-- [ ] Optimize database queries
-- [ ] Implement connection pooling
-- [ ] Use read replicas for database
-
----
-
-## 📝 Implementation Checklist Summary
-
-- [ ] Phase 1: Core Infrastructure Setup
-- [ ] Phase 2: AWS S3 Integration
-- [ ] Phase 3: SQS Event Handling
-- [ ] Phase 4: Kafka Integration
-- [ ] Phase 5: BullMQ + Redis Job Queue
-- [ ] Phase 6: Transcoding Workers
-- [ ] Phase 7: API Server Implementation
-- [ ] Phase 8: Frontend Integration
-- [ ] Phase 9: Docker & Kubernetes
-- [ ] Phase 10: Monitoring & Testing
-
----
-
-## 🚀 Quick Start Commands
-
-```bash
-# Install dependencies
-cd backend && npm install
-
-# Set up environment variables
-cp .env.sample .env
-# Edit .env with your credentials
-
-# Run database migrations
-npx prisma migrate dev
-
-# Start Redis and Kafka (Docker)
-docker-compose up -d redis kafka zookeeper
-
-# Start API server
-npm run dev
-
-# Start SQS consumer (separate terminal)
-node dist/workers/sqs-consumer.js
-
-# Start Kafka consumer (separate terminal)
-node dist/workers/kafka-consumer.js
-
-# Start BullMQ worker (separate terminal)
-node dist/workers/transcode.worker.js
-```
-
----
-
-**Last Updated:** [Current Date]
-**Status:** Planning Phase
+1. **Ports `5000`/`7000` or `5001`/`7070`?** One answer fixes four files
+2. **`course-service` before or after commerce?** The design argues after, at a
+   cost of ~150 lines later ported. If the split is imminent, Phase 0 and 2 of
+   commerce should start there instead
+3. **What stack does `course-service` use**, and does it own `Video`?
+4. **Add `name` to the access-token claims?** One line; every future service gets
+   a personalised greeting with no user lookup. `notification-service` wants it
+   for the receipt template. It is your token contract
+5. **Razorpay first, or Stripe?** Razorpay assumed — test mode needs no live
+   entity and INR is the likely default
+6. **Refund policy** — immediate revocation today. A window-based policy
+   ("7 days, under 20% watched") needs watch-progress data that does not exist
+7. **Is per-resolution transcode progress wanted?** If yes the callback widens
+   and `VideoTranscodeJob` gets rows; if no, drop the table
+8. **`tenant_id` on the `public` schema too?** Commerce and notifications carry
+   it; the application schema does not. Cheap now, painful later

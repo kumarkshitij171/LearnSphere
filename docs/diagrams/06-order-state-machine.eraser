@@ -1,0 +1,42 @@
+// Order and payment state machines (flowchart-diagram)
+// Rules enforced centrally in OrderStateMachine. Source: order-service/SYSTEM_DESIGN.md
+
+title Order and Payment State Machines
+
+Created [shape: oval, label: "CREATED"]
+Pending [label: "PENDING"]
+Paid [label: "PAID"]
+Failed [label: "FAILED"]
+Cancelled [shape: oval, label: "CANCELLED"]
+Expired [shape: oval, label: "EXPIRED"]
+RefundPending [label: "REFUND_PENDING"]
+Refunded [shape: oval, label: "REFUNDED / PARTIALLY_REFUNDED"]
+
+Created > Pending: initiate - checkout session created
+Created > Paid: free course - SYSTEM, no gateway
+Created > Expired: sweeper - past expires_at
+Created > Cancelled: user cancels
+Pending > Paid: signed webhook captured, or sweeper reads provider
+Pending > Failed: webhook failed
+Pending > Expired: sweeper - past expires_at
+Pending > Cancelled: user cancels
+Failed > Pending: user retries - new payments row, same order
+Failed > Paid: late capture - webhook or sweeper only
+Expired > Paid: late capture - webhook or sweeper only
+Cancelled > Paid: late capture - webhook or sweeper only
+Paid > RefundPending: admin refund (one in flight per order)
+RefundPending > Refunded: provider confirms - webhook, sweeper, or synchronous API response
+RefundPending > Paid: provider rejects the refund
+Refunded > RefundPending: partial refund - admin refunds the remainder
+
+PayInitiated [shape: oval, label: "payment INITIATED"]
+PayAuthorized [label: "AUTHORIZED - modelled, skipped by auto-capture"]
+PayCaptured [label: "CAPTURED"]
+PayFailed [shape: oval, label: "payment FAILED"]
+PayRefunded [shape: oval, label: "REFUNDED / PARTIALLY_REFUNDED"]
+
+PayInitiated > PayAuthorized
+PayAuthorized > PayCaptured
+PayInitiated > PayFailed
+PayAuthorized > PayFailed
+PayCaptured > PayRefunded

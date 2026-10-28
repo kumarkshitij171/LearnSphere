@@ -2,29 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Two designed looks with one set of token names (SYSTEM_DESIGN.md Part VIII §30.1).
+ * studio = light, the app. theater = dark, the video player always and the app when the UI config
+ * says mode "dark". --highlight and --radius come from the UI config on <html style>, so the looks
+ * never redefine them.
+ */
 @layer base {
+  :root,
+  [data-look='studio'] {
+    --background: 0 0% 100%;
+    --foreground: 240 6% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 7%;
+    --primary: 240 6% 7%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 7%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 3% 44%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 7%;
+    --destructive: 13 90% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 7% 91%;
+    --input: 240 7% 91%;
+    --ring: 240 6% 7%;
+    --surface: 240 5% 96%;
+    --surface-raised: 0 0% 100%;
+    --body: 240 3% 36%;
+    --subtle: 240 2% 56%;
+    --success: 149 70% 30%;
+    --warning: 33 92% 33%;
+    --danger: 13 90% 40%;
+    --info: 229 69% 50%;
+    color-scheme: light;
+  }
+
   :root {
-    /* Midnight Premium — dark by default */
-    --background: 240 24% 5%; /* #0A0A0F */
-    --foreground: 240 20% 96%; /* #F5F5F7 */
-    --card: 240 6% 10%; /* #18181B */
-    --card-foreground: 240 20% 96%;
-    --popover: 240 8% 8%;
-    --popover-foreground: 240 20% 96%;
-    --primary: 83 78% 55%; /* electric lime #A3E635 */
-    --primary-foreground: 240 24% 5%;
-    --secondary: 240 5% 14%;
-    --secondary-foreground: 240 20% 96%;
-    --muted: 240 5% 13%;
-    --muted-foreground: 240 5% 65%; /* #A1A1AA */
-    --accent: 83 78% 55%;
-    --accent-foreground: 240 24% 5%;
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 240 20% 98%;
-    --border: 240 6% 18%;
-    --input: 240 6% 16%;
-    --ring: 83 78% 55%;
-    --radius: 0.75rem;
+    --highlight: 50 100% 65%;
+    --highlight-foreground: 51 100% 9%;
+    --radius: 0.625rem;
+  }
+
+  [data-look='theater'] {
+    --background: 240 8% 9%;
+    --foreground: 60 7% 94%;
+    --card: 240 7% 13%;
+    --card-foreground: 60 7% 94%;
+    --popover: 240 7% 13%;
+    --popover-foreground: 60 7% 94%;
+    --primary: 60 7% 94%;
+    --primary-foreground: 240 8% 9%;
+    --secondary: 240 7% 13%;
+    --secondary-foreground: 60 7% 94%;
+    --muted: 240 7% 13%;
+    --muted-foreground: 240 5% 64%;
+    --accent: 240 7% 17%;
+    --accent-foreground: 60 7% 94%;
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 240 8% 9%;
+    --border: 240 7% 19%;
+    --input: 240 7% 19%;
+    --ring: 60 7% 94%;
+    --surface: 240 7% 13%;
+    --surface-raised: 240 7% 17%;
+    --body: 240 5% 76%;
+    --subtle: 240 4% 52%;
+    --success: 142 69% 58%;
+    --warning: 43 96% 56%;
+    --danger: 0 91% 71%;
+    --info: 222 100% 74%;
+    color-scheme: dark;
   }
 }
 
@@ -34,115 +85,114 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: 'ss01', 'cv01';
+  }
+  [data-look='theater'] {
+    @apply bg-background text-foreground;
   }
   ::selection {
-    background: hsl(var(--primary) / 0.3);
-    color: hsl(var(--foreground));
+    background: hsl(var(--highlight));
+    color: hsl(var(--highlight-foreground));
   }
 }
 
-@layer utilities {
-  /* Subtle dotted grid for dark backgrounds */
-  .bg-grid {
-    background-image: radial-gradient(
-      circle at 1px 1px,
-      hsl(0 0% 100% / 0.05) 1px,
-      transparent 0
-    );
-    background-size: 28px 28px;
+/* Video player (components/player) */
+@layer components {
+  @keyframes player-flash {
+    from { opacity: 1; transform: translate(-50%, -50%) scale(0.85); }
+    to { opacity: 0; transform: translate(-50%, -50%) scale(1.35); }
   }
+  @keyframes player-fade-out {
+    0%, 60% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes player-pop {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .player-flash { animation: player-flash 0.55s ease-out forwards; }
+  .player-ripple { animation: player-fade-out 0.7s ease-out forwards; }
+  .player-chip { animation: player-fade-out 1.1s ease-out forwards; }
+  .player-pop { animation: player-pop 0.14s ease-out; }
 
-  /* Faint radial spotlight */
-  .bg-spotlight {
-    background:
-      radial-gradient(60% 50% at 50% 0%, hsl(83 78% 55% / 0.1), transparent 70%),
-      radial-gradient(40% 40% at 80% 20%, hsl(160 70% 45% / 0.08), transparent 70%);
+  /* thin YouTube-style range with an accent fill (--fill set inline) */
+  .player-range {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
   }
+  .player-range::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(to right, #fff var(--fill, 100%), hsl(0 0% 100% / 0.25) var(--fill, 100%));
+  }
+  .player-range::-moz-range-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(to right, #fff var(--fill, 100%), hsl(0 0% 100% / 0.25) var(--fill, 100%));
+  }
+  .player-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 12px;
+    width: 12px;
+    margin-top: -4.5px;
+    border-radius: 9999px;
+    background: #fff;
+  }
+  .player-range::-moz-range-thumb {
+    height: 12px;
+    width: 12px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+  }
+  .player-range:focus-visible { outline: none; }
+  .player-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px hsl(var(--primary) / 0.6); }
 
-  /* Glassy surface */
-  .glass {
-    background: hsl(240 6% 10% / 0.6);
-    backdrop-filter: blur(14px);
-    border: 1px solid hsl(0 0% 100% / 0.08);
+  @media (prefers-reduced-motion: reduce) {
+    .player-flash, .player-ripple, .player-chip { animation: none; opacity: 0; }
+    .player-pop { animation: none; }
   }
+}
 
-  .text-gradient {
-    background: linear-gradient(135deg, hsl(83 78% 60%), hsl(150 70% 55%));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+/* Radix overlays (components/ui) — driven by data-state, no animation plugin needed */
+@layer components {
+  @keyframes ui-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ui-dialog-in {
+    from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.97); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   }
+  @keyframes ui-popover-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .ui-overlay[data-state='open'] { animation: ui-fade-in 0.15s ease-out; }
+  .ui-dialog[data-state='open'] { animation: ui-dialog-in 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+  .ui-popover[data-state='open'] { animation: ui-popover-in 0.12s ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-overlay[data-state='open'], .ui-dialog[data-state='open'], .ui-popover[data-state='open'] { animation: none; }
+  }
+}
 
-  .glow-primary {
-    box-shadow:
-      0 0 0 1px hsl(83 78% 55% / 0.3),
-      0 8px 40px -8px hsl(83 78% 55% / 0.45);
+@layer components {
+  @keyframes ui-indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
   }
+  .ui-indeterminate { animation: ui-indeterminate 1.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .ui-indeterminate { animation: none; } }
+}
 
-  @keyframes blob {
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
-    }
-    33% {
-      transform: translate(30px, -40px) scale(1.1);
-    }
-    66% {
-      transform: translate(-20px, 20px) scale(0.95);
-    }
+@layer components {
+  @keyframes player-eq {
+    0%, 100% { height: 30%; }
+    50% { height: 100%; }
   }
+  .player-eq { height: 60%; animation: player-eq 0.9s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .player-eq { animation: none; } }
+}
 
-  @keyframes fade-up {
-    from {
-      opacity: 0;
-      transform: translateY(18px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes shimmer {
-    100% {
-      transform: translateX(100%);
-    }
-  }
-
-  @keyframes pulse-glow {
-    0%,
-    100% {
-      opacity: 0.6;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  .animate-blob {
-    animation: blob 16s ease-in-out infinite;
-  }
-  .animate-fade-up {
-    animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  .animate-pulse-glow {
-    animation: pulse-glow 4s ease-in-out infinite;
-  }
-
-  .animation-delay-200 {
-    animation-delay: 0.15s;
-  }
-  .animation-delay-400 {
-    animation-delay: 0.3s;
-  }
-  .animation-delay-600 {
-    animation-delay: 0.45s;
-  }
-  .animation-delay-2000 {
-    animation-delay: 2s;
-  }
-  .animation-delay-4000 {
-    animation-delay: 4s;
-  }
+@layer components {
+  @keyframes ui-sheet-in { from { transform: translateX(-100%); } to { transform: none; } }
+  .ui-sheet[data-state='open'] { animation: ui-sheet-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+  @media (prefers-reduced-motion: reduce) { .ui-sheet[data-state='open'] { animation: none; } }
 }
