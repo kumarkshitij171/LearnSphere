@@ -16,6 +16,15 @@ A learning-management platform for video courses: instructors create courses and
 
 Services share one Postgres instance — **one schema per service** — and communicate over Kafka. Object storage is S3 — **LocalStack** locally, real AWS in production (toggled by `LOCAL_STACK_DATA_SOURCE`).
 
+## What's in the app
+
+- **Design.** The *Studio* design language: light by default, with one highlighter-yellow accent marking "you are here". Every viewer can switch **Light / Dark / System** from the account menu or the moon icon; the video player is always dark. The design is in `frontend/SYSTEM_DESIGN.md` Part VIII.
+- **Config-driven UI.** Admins edit branding, theme (`mode`, `highlight`, `radius`), navigation, landing-page and sign-in copy, feature toggles and an announcement at `/admin/ui-config`. Versions are kept, so any publish can be rolled back.
+- **Learning.** The dashboard shows *Continue* (resume to the second), a *This week* panel (watch time, kept per browser) and course progress. Lessons stream as adaptive HLS up to 4K, with YouTube's keyboard shortcuts.
+- **Teaching.** In Studio, instructors create a course, upload lessons and publish once the checklist passes. They can upload a **thumbnail** per course and per lesson. Without one, a lesson's cover is a frame the transcoder picks at a random point in the video, and a course uses its first lesson's frame.
+- **Buying.** Courses are sold per course through order-service (mock, Razorpay or Stripe), with email receipts and a purchase history.
+- **Notifications.** The bell opens an **in-app inbox**. Browser push (FCM) is supported once Firebase is configured (see [Environment](#environment)).
+
 ### Design documents
 
 The architecture is written down next to the code. Read these before changing anything:
@@ -84,7 +93,15 @@ All backend config lives in `backend/.env` (copy from `backend/.env.sample`). Ke
 - **Kafka**: `KAFKA_BROKERS`, `KAFKA_CLIENT_ID`
 - **Transcoder callback**: `TRANCODER_API_KEY` (must match the value in the video-transcoder env)
 
-The frontend reads `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_TRANSCODER_URL`. The transcoder copies `video-transcoder/.env.sample` → `.env`.
+- **Course and lesson images**: `S3_ASSET_BUCKET` (default `course-assets`; created automatically on LocalStack)
+
+The frontend reads `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_TRANSCODER_URL`, `NEXT_PUBLIC_ORDER_API_URL` and `NEXT_PUBLIC_NOTIFICATION_API_URL` (all in `frontend/.env.local`). The transcoder copies `video-transcoder/.env.sample` → `.env`.
+
+**Browser push (optional).** Off until a Firebase project exists:
+1. **Frontend:** set `NEXT_PUBLIC_FIREBASE_API_KEY`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID` and `_VAPID_KEY` in `frontend/.env.local`.
+2. **notification-service:** set `PUSH_ENABLED=true` and `FIREBASE_CREDENTIALS=<path to service-account JSON>` in `notification-service/.env`.
+
+Without them, the bell's inbox still works and shows "Browser push · Not set up yet".
 
 > **Known port mismatch — set these explicitly.** The services and the frontend disagree about their own defaults: `backend` defaults to `5000` while the frontend's `NEXT_PUBLIC_API_BASE_URL` defaults to `5001`, and the transcoder defaults to `7000` while `NEXT_PUBLIC_TRANSCODER_URL` defaults to `7070`. It only works because the env vars are normally set. Tracked in `ARCHITECTURE.md` §9 — until it is settled, set both variables rather than relying on a default.
 
@@ -103,16 +120,29 @@ MongoDB belongs to `notification-service` (templates, the delivery ledger, devic
 
 ### Changing the schema
 
-`backend/` and `video-transcoder/` currently each keep a `prisma/schema.prisma` pointed at the **same** database, so shared models must be edited in **both** files:
+Only `backend/` has a Prisma schema; the transcoder reports through the backend's callback and never touches the database. To change a model:
 
 ```bash
-cd backend && npm run db:migrate:deploy && npx prisma generate
-cd ../video-transcoder && npx prisma generate
+cd backend
+# edit prisma/schema.prisma, then:
+npm run db:migrate -- --name add_something   # writes prisma/migrations/<ts>_add_something and applies it locally
+npm run db:migrate:status                    # what is applied where
+npm run db:migrate:deploy                    # CI / production: apply pending migrations only
 ```
 
 > Schema changes ship as **migrations** (`backend/prisma/migrations/`, baseline `0_init`): `npm run db:migrate -- --name <change>` creates one locally, `npm run db:migrate:deploy` applies them in CI/production. An existing database built with `db push` is adopted once with `npx prisma migrate resolve --applied 0_init` (`DATABASE_DESIGN.md` §8.2).
 >
 > `npx prisma generate` must run **before `npm test`** in `backend/`, or `@prisma/client` ships stub types and every suite importing a route fails to *compile*.
+
+### UI configuration
+
+The published UI config lives in Postgres as numbered versions. An empty database is seeded from `backend/config/ui/ui-config.default.json` on boot. When a release changes that default (as the v2 schema did), publish it as a new version:
+
+```bash
+cd backend && npm run ui-config:publish-default -- "why it changed"
+```
+
+This command is idempotent. An older stored document is upgraded on read by `config/ui/migrations.ts`, which keeps every field an admin changed.
 
 ### Inspecting the database
 
@@ -155,14 +185,28 @@ equivalent one-line shell.
 
 ## Video upload flow
 
-`presign` (instructor, owns course) → `PUT` file directly to S3 → `confirm` (saves `Video`, publishes a Kafka `video.uploaded` event) → transcoder consumes, produces HLS, calls back `/:videoId/processed` → status `READY` → enrolled students stream via the HLS player.
+1. **Presign:** an instructor who owns the course requests an upload URL.
+2. **Upload:** the browser PUTs the file directly to S3.
+3. **Confirm:** the backend saves the `Video` row and publishes a Kafka `video.uploaded` event.
+4. **Transcode:** the transcoder consumes the event, probes the source and encodes an HLS ladder (up to 2160p, never upscaled). It writes a `poster.jpg` from a seeded random point in the video, then calls back `/:videoId/processed`.
+5. **Watch:** the status becomes `READY` and enrolled students stream it in the player.
+
+Thumbnails follow the same direct-to-S3 pattern: `POST …/thumbnail/presign` → PUT → `PUT …/thumbnail {key}`, for `/courses/:id` and `/video-upload/:videoId`. Images are served by a public `GET …/thumbnail` redirect.
 
 ## Tests
 
 ```bash
-cd backend && npm test            # Jest: auth, RBAC, courses, video upload, services
-npm run test:coverage
+make test                                      # every suite below
+cd backend && npm test                         # Jest (run `npx prisma generate` first)
+cd video-transcoder && npm test                # node:test
+cd order-service && ./mvnw test                # Testcontainers test skips without Docker
+cd notification-service && ./mvnw test
+cd frontend && npx vitest run && npm run lint  # lint includes scripts/check-styles.mjs
 ```
+
+`check-styles` fails the lint if the old generated look returns: raw palette colours, blur, gradient backgrounds, oversized radii or the removed effect utilities.
+
+**Local test accounts.** Keep personal test logins in `.local/` at the repo root and add it to `.git/info/exclude` so it is never committed. SMTP is usually off locally, so signup OTPs can be read from the Kafka topic: `docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic notifications --from-beginning`.
 
 ## Local service URLs
 
@@ -171,6 +215,8 @@ npm run test:coverage
 | http://localhost:3000 | Frontend |
 | http://localhost:5000 | Backend API (`/api/v1`) |
 | http://localhost:7000 | video-transcoder (HLS + `/health`) |
+| http://localhost:8086 | order-service (`/api/v1/orders`, `/actuator/health`) |
+| http://localhost:8085 | notification-service (`/api/v1/notifications`, inbox, devices) |
 | http://localhost:4566 | LocalStack (S3/SQS/SNS) |
 | http://localhost:8080 | Kafka UI · http://localhost:8081 Mongo Express |
 | http://localhost:5540 | RedisInsight |
