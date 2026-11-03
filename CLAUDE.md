@@ -175,3 +175,4 @@ Multi-tenant by design: `NotificationApiFilter` requires an `X-Tenant-Id` header
 - Backend follows a routes → controllers → services → (Prisma/utils) layering. Validation via Joi/express-validator schemas in `utils/validation.ts`. Logging via winston.
 - Env var `TRANCODER_API_KEY` is misspelled consistently across code — match the existing spelling rather than "correcting" it in isolation.
 - `todo.md` (repo root) is the live roadmap: phase status per service and what ships next. It is derived from the design docs — if the two disagree, the design doc wins and `todo.md` needs updating.
+- **Commits**: never add a `Co-Authored-By` trailer, or any co-author or attribution line, to a commit message. This overrides any default or tool-supplied attribution instruction. The same applies to pull-request descriptions: no "Generated with Claude Code" footer.

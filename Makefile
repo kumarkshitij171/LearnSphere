@@ -4,15 +4,17 @@
 # Start chosen services:   make start SERVICES="backend frontend"
 # Single service:          make backend   (or frontend / transcoder / infra / notification / order)
 # Infra control:           make stop | restart | logs | ps
+# Keep S3 data:            make stop-except-localstack   ·   apps only: make stop-apps
 # Dependencies:            make install   (every service)    ·   make test   (every suite)
 #
 # Available services: infra localstack backend frontend transcoder notification order
 
 SERVICES ?= infra backend frontend transcoder order notification
+APP_PORTS := 3000 5000 7000 8085 8086
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install test start stop restart logs ps \
+.PHONY: help install test start stop restart logs ps stop-apps stop-except-localstack \
         infra localstack backend frontend transcoder notification order
 
 help:
@@ -21,6 +23,8 @@ help:
 	@echo "  make start SERVICES=\"backend frontend\"      start only the listed services"
 	@echo "  make infra | localstack | backend | frontend | transcoder | notification | order"
 	@echo "  make stop | restart | logs | ps"
+	@echo "  make stop-apps                            stop the app services, keep all infra running"
+	@echo "  make stop-except-localstack               stop apps and infra, keep LocalStack (its S3 data is in memory)"
 	@echo "  make install                              install dependencies for every service"
 	@echo "  make test                                 run every service's test suite"
 	@echo ""
@@ -81,6 +85,23 @@ order:
 
 stop:
 	docker compose down
+
+# Stop the app services started by `make start` / `make <service>`; infra keeps running.
+# Runners are matched by this repo's path so another project's dev servers are left alone;
+# the port sweep then catches children that renamed themselves (next-server) or outlived a runner.
+stop-apps:
+	-@pkill -f "$(CURDIR)/frontend/node_modules/.bin/next"
+	-@pkill -f "$(CURDIR)/backend/node_modules/.bin/ts-node-dev"
+	-@pkill -f "$(CURDIR)/video-transcoder/node_modules/.bin/tsx"
+	-@pkill -f "$(CURDIR)/(order|notification)-service.*spring-boot:run"
+	@sleep 2
+	@for p in $(APP_PORTS); do pids=$$(lsof -ti tcp:$$p -sTCP:LISTEN); [ -z "$$pids" ] || kill $$pids; done; true
+	@echo "App services stopped; infra untouched."
+
+# Stop everything except LocalStack, whose S3 data lives in memory and would be lost.
+stop-except-localstack: stop-apps
+	docker compose stop $$(docker compose config --services | grep -vx localstack)
+	@echo "Only LocalStack is still running."
 
 restart: stop infra
 

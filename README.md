@@ -78,10 +78,14 @@ make install                              # every service's dependencies
 make test                                 # every service's test suite
 make infra | localstack | backend | frontend | transcoder | order | notification
 make stop | restart | logs | ps
+make stop-apps                            # stop the five app services, keep all infra running
+make stop-except-localstack               # stop apps and infra, keep only LocalStack
 make help
 ```
 
 `make start` runs the selected services together under one process group — `Ctrl-C` stops them all.
+
+> LocalStack keeps S3 in memory. `make stop` (`docker compose down`) removes its container, and every uploaded video, poster and thumbnail goes with it. Use `make stop-except-localstack` to stop everything else and keep that data.
 
 ## Environment
 
@@ -98,8 +102,23 @@ All backend config lives in `backend/.env` (copy from `backend/.env.sample`). Ke
 The frontend reads `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_TRANSCODER_URL`, `NEXT_PUBLIC_ORDER_API_URL` and `NEXT_PUBLIC_NOTIFICATION_API_URL` (all in `frontend/.env.local`). The transcoder copies `video-transcoder/.env.sample` → `.env`.
 
 **Browser push (optional).** Off until a Firebase project exists:
-1. **Frontend:** set `NEXT_PUBLIC_FIREBASE_API_KEY`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID` and `_VAPID_KEY` in `frontend/.env.local`.
-2. **notification-service:** set `PUSH_ENABLED=true` and `FIREBASE_CREDENTIALS=<path to service-account JSON>` in `notification-service/.env`.
+1. **Frontend** (`frontend/.env.local`): set `NEXT_PUBLIC_FIREBASE_API_KEY`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID` and `_VAPID_KEY` from Firebase console → Project settings → General (web app) and Cloud Messaging (web push key pair). These are public by design; restrict the API key to your origins (e.g. `http://localhost:3000/*`) in Google Cloud → Credentials.
+2. **notification-service** (`notification-service/.env`): set `PUSH_ENABLED=true` and `FIREBASE_CREDENTIALS=/absolute/path/to/service-account.json`. Get the key from Project settings → Service accounts → Generate new private key. **It is a secret**: keep it outside git, e.g. in `.local/` listed in `.git/info/exclude`. A deleted or rotated key fails with `invalid_grant: Invalid JWT Signature`.
+3. Start the app on `localhost:3000`, sign in, open the bell and choose **Turn on**.
+
+To send a test push:
+
+```bash
+curl -X POST http://localhost:8085/api/v1/notifications \
+  -H 'Content-Type: application/json' -H 'X-Tenant-Id: learnsphere' \
+  -H "X-Internal-Api-Key: $(grep -E '^INTERNAL_API_KEY=' notification-service/.env | cut -d= -f2-)" \
+  -d '{"userId":"<USER_ID>","channels":["PUSH","IN_APP"],"templateName":"announcement","target":{},
+       "variables":{"title":"Hello","message":"Test push","link":"/dashboard"}}'
+```
+
+Check delivery with `GET /api/v1/notifications/<notificationId>` (same headers).
+
+**Rate limits.** One user gets at most 5 messages of the same template per 10 minutes. Extra ones are stored as `RETRYING` with `rate limited: … sent to this user too often` and go out automatically once the window allows. Loosen it for local testing with `RATE_LIMIT_PER_USER_TEMPLATE` / `RATE_LIMIT_USER_WINDOW` (or `RATE_LIMIT_ENABLED=false`) in `notification-service/.env`, never in production.
 
 Without them, the bell's inbox still works and shows "Browser push · Not set up yet".
 

@@ -1050,6 +1050,45 @@ one.
 
 ---
 
+
+### 12.6.1 LLD (for review, 29 Oct 2026)
+
+> **Status: design for review — no code.** Required before the first real payment.
+
+**Metrics — Micrometer → Prometheus.**
+- Dependency `io.micrometer:micrometer-registry-prometheus` (Actuator is already on the classpath);
+  expose `/actuator/prometheus` on the management port only, not through the public API.
+- `OrderMetrics` (one class, injected where the events happen) owns every meter in the §12.6 table:
+  counters incremented in `OrderService` (created), the webhook pipeline (received/valid, paid,
+  failed by `errorCode`), the outbox relay (published), `RefundService` (refunds); gauges read by
+  a scheduled query every 30 s (unpublished outbox rows; `PENDING` orders older than the grace
+  period); a `Timer` around create-order with a `phase` tag (`internal` | `gateway`).
+- Tags are bounded: `provider` (≤3 values), `errorCode` (enum), `valid` (bool). **Never** order id
+  or user id as a tag — that is unbounded cardinality.
+
+**Logs — correlation, not more lines.**
+- An MDC filter puts `tenantId`, `userId` (from the JWT) on every request; `orderId` and `provider`
+  are added where the order is known (service methods, Kafka listeners, sweeper, outbox relay) and
+  cleared after. Log pattern gains `[order=%X{orderId} user=%X{userId} provider=%X{provider}]`.
+- The outbox event carries `orderId` already, so `backend` and `notification-service` logs can be
+  joined on it until tracing exists.
+
+**Prometheus, Grafana and alerts — local first.**
+- `docker-compose.yml` gains `prometheus` (scrapes order-service; later the other Spring service)
+  and `grafana` (provisioned datasource + one "Payments" dashboard JSON in `deploy/grafana/`).
+- `deploy/prometheus/alerts.yml` encodes §12.6's four alerts: outbox depth rising for 5 min; any
+  `orders_amount_mismatch_total` increase; any `webhooks_received_total{valid="false"}` increase;
+  `PENDING` backlog growing for 15 min. Alertmanager routing (Slack/email) is **deferred** —
+  firing alerts are visible in Prometheus; paging needs a destination you choose.
+
+**Phases.** O1 metrics + MDC + `/actuator/prometheus` (unit tests on `OrderMetrics`, a
+`@SpringBootTest` that scrapes the endpoint) → O2 Prometheus + Grafana in compose with the
+dashboard → O3 alert rules, verified by forcing an invalid webhook signature and watching the
+alert fire.
+
+**Risk.** Adding the registry dependency needs Maven Central; this machine has failed to reach it
+before (todo.md). If it still cannot, O1 is blocked on network, not on design.
+
 ## 13. Error classification
 
 | Class | HTTP | Examples | Retryable |

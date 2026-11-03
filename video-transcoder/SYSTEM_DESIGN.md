@@ -687,6 +687,77 @@ Optionally the `jobs[]` callback widening (§9.2) so progress is real.
 **Verify:** a portrait upload plays undistorted; a 10-minute video completes
 measurably faster; the master playlist still passes the Phase-1 unit test.
 
+### Phase 3b — LLD: parallel rungs and real progress (for review, 29 Oct 2026)
+
+> **Status: design for review — no code.** Requested by the user together with the frontend's
+> "honest processing" work (frontend `SYSTEM_DESIGN.md` §8.3), because a real progress bar needs
+> the transcoder to report per-rung progress.
+
+**Goal.** A job finishes faster, and the instructor sees *which* qualities are done and how far the
+rest have got, instead of one opaque "Processing".
+
+**Not in scope.** Per-rung retry (a failed rung still fails the job, as today); pushing progress to
+the browser over SSE/WebSocket (polling is enough at this scale); GPU encoding.
+
+#### Parallelism — a bounded pool of ffmpeg processes
+
+| Option | For | Against |
+|---|---|---|
+| **A. Worker pool: one ffmpeg per rung, at most `TRANSCODE_CONCURRENCY` at once** (chosen) | Real per-rung progress; one rung's failure is isolated and named; trivial to reason about | The source is decoded once per rung |
+| B. One ffmpeg, `split` filter, all rungs as outputs | Decodes once — the bigger win for 4K HEVC sources | One progress number for all rungs; one failure loses every rung; harder to read |
+
+A is chosen because per-rung progress is the user-visible half of this work; for H.264 ≤1080p
+sources decode is a small share of the cost. B is recorded with its trigger: **4K sources where
+decode dominates** (measure first).
+
+- `TRANSCODE_CONCURRENCY`, default `2`, validated `1..8` at startup (Phase-1 config rules).
+- Each encoder gets `-threads ⌊cpus / concurrency⌋` so the pool does not oversubscribe the CPU.
+- Order of work: highest rung first, so the slowest encode starts earliest.
+- The master playlist is still written once, after every rung succeeds, in ladder order.
+
+#### Progress — from ffmpeg itself
+
+- Every encode runs with `-progress pipe:1 -nostats`; the parser reads `out_time_us` and computes
+  `progress = out_time / source.durationSec`, clamped to 0–99 until the process exits 0 (then 100).
+- Unknown duration (live-like sources) → progress stays `null`; the UI shows an indeterminate bar.
+
+#### Reporting — the §9.2 `jobs[]` widening, throttled
+
+`POST …/processed` with `status: "TRANSCODING"` and `jobs[]` (shape in §9.2), sent:
+- once when the ladder is known (every rung `QUEUED`);
+- on each rung's start, finish or failure;
+- otherwise at most every **5 s** per job, and only if some rung moved ≥ 5 points.
+
+The callback already retries with backoff; progress callbacks get **one** attempt — a lost
+progress update is harmless, the terminal `READY`/`FAILED` is what must arrive.
+
+#### Files
+
+| File | Change |
+|---|---|
+| `src/services/transcode.service.ts` | ladder loop → `runPool(ladder, concurrency, encodeRung)`; collects variants in ladder order |
+| `src/services/ffmpeg.ts` (or where `encodeRendition` lives) | `-progress pipe:1`, `onProgress(pct)` callback, `-threads` |
+| `src/services/progress.ts` (new) | `parseProgress(chunk)`, `ProgressReporter` (throttle, builds `jobs[]`) |
+| `src/config/conf.ts` | `TRANSCODE_CONCURRENCY` |
+| tests | pool order/limits, progress parsing, throttle rules, a 2-rung real-ffmpeg run |
+
+#### Backend side (contract owner: `backend/`)
+
+- Accept `jobs[]` on `/processed` (Joi, optional). Upsert `VideoTranscodeJob` by
+  `(videoId, resolution)` — **new migration** adding that unique index (first change under
+  `prisma migrate`). On `READY`, mark every row `COMPLETED`/100; on `FAILED`, the failed rung
+  carries the error.
+- `GET /video-upload/:videoId` and the instructor's course detail return `jobs` for lessons not
+  yet `READY`. Students never see them.
+
+#### Phases
+
+| Phase | Ships | Done when |
+|---|---|---|
+| **3b-1** | Pool + `-threads` + progress parsing + throttled `jobs[]` | `npm test` green; a 10-min 1080p clip is measurably faster than sequential (numbers recorded here) |
+| **3b-2** | Backend accepts `jobs[]`, migration, exposes `jobs` | Jest green; `migrate deploy` on a scratch DB clean |
+| **3b-3** | Frontend progress UI (frontend §8.3) | Upload a real file and watch per-rung progress reach `READY` |
+
 ### Phase 4 — stop serving bytes
 CloudFront in front of `s3://processed-videos`, signed URLs or cookies; remove
 the HLS mount; `frontend/lib/playback.ts` points at the CDN. Once this lands,
