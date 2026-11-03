@@ -30,12 +30,20 @@ import { CommandSearch } from '@/components/command-search';
 import { ThemeSegmented, ThemeToggleButton } from '@/components/theme-toggle';
 import { PushToasts } from '@/components/push-toasts';
 import { NotificationInbox } from '@/components/notification-inbox';
-import { usersApi, type CurrentUser } from '@/lib/api';
+import { coursesApi, usersApi, type CurrentUser } from '@/lib/api';
 import { navIcon, useUiConfig, visibleNav, type NavItemConfig } from '@/lib/ui-config';
 import { disablePush, enablePush, pushState, type PushState } from '@/lib/push';
 
 // Sidebar items come from the UI config (navigation.sidebar / sidebarBottom).
-type NavItem = { id: string; label: string; icon: ReturnType<typeof navIcon>; href?: string };
+type NavItem = {
+  id: string;
+  label: string;
+  icon: ReturnType<typeof navIcon>;
+  href?: string;
+  section?: string;
+  count?: NavItemConfig['count'];
+};
+type NavCounts = Partial<Record<NonNullable<NavItemConfig['count']>, number>>;
 
 const COLLAPSED_KEY = 'learnsphere.sidebar.collapsed';
 
@@ -45,9 +53,11 @@ const toNavItems = (items: NavItemConfig[], role?: string): NavItem[] =>
     label: item.label,
     icon: navIcon(item.icon),
     href: item.href ?? undefined,
+    section: item.section,
+    count: item.count,
   }));
 
-function NavRow({ item, active, collapsed }: { item: NavItem; active: boolean; collapsed: boolean }) {
+function NavRow({ item, active, collapsed, count }: { item: NavItem; active: boolean; collapsed: boolean; count?: number }) {
   const Icon = item.icon;
   const base = cn(
     'group relative flex h-9 items-center gap-3 rounded-[10px] px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35',
@@ -61,10 +71,16 @@ function NavRow({ item, active, collapsed }: { item: NavItem; active: boolean; c
     <>
       <Icon className={cn('h-[18px] w-[18px] shrink-0', active ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} />
       {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && count !== undefined ? (
+        <span className="ml-auto font-mono text-xs font-normal tabular-nums text-muted-foreground">{count}</span>
+      ) : null}
       {active ? (
         <span
           aria-hidden
-          className={cn('h-1.5 w-1.5 rounded-[2px] bg-highlight shadow-[0_0_0_1px_hsl(var(--foreground)/0.15)]', collapsed ? 'absolute right-1.5 top-1.5' : 'ml-auto')}
+          className={cn(
+            'h-1.5 w-1.5 shrink-0 rounded-[2px] bg-highlight shadow-[0_0_0_1px_hsl(var(--foreground)/0.15)]',
+            collapsed ? 'absolute right-1.5 top-1.5' : count !== undefined ? 'ml-1' : 'ml-auto'
+          )}
         />
       ) : null}
     </>
@@ -80,6 +96,50 @@ function NavRow({ item, active, collapsed }: { item: NavItem; active: boolean; c
     <span className={base} title={collapsed ? item.label : undefined}>
       {inner}
     </span>
+  );
+}
+
+/** Consecutive items sharing a `section` form a group under a small heading (a rule when collapsed). */
+function NavGroups({
+  items,
+  collapsed,
+  isActive,
+  counts,
+}: {
+  items: NavItem[];
+  collapsed: boolean;
+  isActive: (href?: string) => boolean;
+  counts: NavCounts;
+}) {
+  const groups: Array<{ section?: string; items: NavItem[] }> = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.section === item.section) last.items.push(item);
+    else groups.push({ section: item.section, items: [item] });
+  }
+  return (
+    <>
+      {groups.map((group, i) => (
+        <div key={`${group.section ?? 'none'}-${i}`} className={cn('space-y-0.5', i > 0 && 'mt-4')}>
+          {group.section ? (
+            collapsed ? (
+              i > 0 ? <div aria-hidden className="mx-2.5 mb-2 border-t border-border" /> : null
+            ) : (
+              <p className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">{group.section}</p>
+            )
+          ) : null}
+          {group.items.map((item) => (
+            <NavRow
+              key={item.id}
+              item={item}
+              active={isActive(item.href)}
+              collapsed={collapsed}
+              count={item.count ? counts[item.count] : undefined}
+            />
+          ))}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -164,6 +224,15 @@ export function AppShell({ user, children }: { user: CurrentUser | null; childre
     .sort((a, b) => b.length - a.length)[0];
   const isActive = (href?: string) => !!href && href === activeHref;
 
+  // counts are fetched only when a visible item asks for one
+  const [counts, setCounts] = useState<NavCounts>({});
+  const wantsCatalogue = [...nav, ...navBottom].some((i) => i.count === 'catalogue');
+  const wantsEnrolled = [...nav, ...navBottom].some((i) => i.count === 'enrolled');
+  useEffect(() => {
+    if (wantsCatalogue) coursesApi.list().then((c) => setCounts((n) => ({ ...n, catalogue: c.length }))).catch(() => {});
+    if (wantsEnrolled) coursesApi.enrolled().then((c) => setCounts((n) => ({ ...n, enrolled: c.length }))).catch(() => {});
+  }, [wantsCatalogue, wantsEnrolled, pathname]);
+
   const commandLinks = [...nav, ...navBottom]
     .filter((i): i is NavItem & { href: string } => !!i.href)
     .map((i) => ({ id: i.id, label: i.label, href: i.href, icon: i.icon }));
@@ -218,15 +287,11 @@ export function AppShell({ user, children }: { user: CurrentUser | null; childre
           <Logo href="/dashboard" withText={!collapsed} />
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3" aria-label="Main">
-          {nav.map((item) => (
-            <NavRow key={item.id} item={item} active={isActive(item.href)} collapsed={collapsed} />
-          ))}
+        <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+          <NavGroups items={nav} collapsed={collapsed} isActive={isActive} counts={counts} />
           {navBottom.length ? (
-            <div className="mt-3 space-y-0.5 border-t border-border pt-3">
-              {navBottom.map((item) => (
-                <NavRow key={item.id} item={item} active={isActive(item.href)} collapsed={collapsed} />
-              ))}
+            <div className="mt-4 border-t border-border pt-3">
+              <NavGroups items={navBottom} collapsed={collapsed} isActive={isActive} counts={counts} />
             </div>
           ) : null}
         </nav>
@@ -284,10 +349,8 @@ export function AppShell({ user, children }: { user: CurrentUser | null; childre
                 <X className="h-4 w-4" />
               </SheetPrimitive.Close>
             </div>
-            <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2" aria-label="Main">
-              {[...nav, ...navBottom].map((item) => (
-                <NavRow key={item.id} item={item} active={isActive(item.href)} collapsed={false} />
-              ))}
+            <nav className="flex-1 overflow-y-auto px-3 py-2" aria-label="Main">
+              <NavGroups items={[...nav, ...navBottom]} collapsed={false} isActive={isActive} counts={counts} />
             </nav>
           </SheetPrimitive.Content>
         </SheetPrimitive.Portal>

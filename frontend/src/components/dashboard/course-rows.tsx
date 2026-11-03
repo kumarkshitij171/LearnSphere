@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CourseCover } from '@/components/course-cover';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import type { CourseSummary } from '@/lib/api';
+import { resumePosition, type ProgressMap } from '@/lib/progress';
 import { pluralize, relativeTime } from '@/lib/format';
 
 export interface LearningRow {
@@ -14,6 +15,20 @@ export interface LearningRow {
   lastWatched: number | null;
   /** the most recent unfinished lesson, to land on it */
   resumeLessonId: string | null;
+}
+
+/** Per enrolled course: lessons watched out of ready lessons, when it was last watched, where to land. */
+export function learningRows(enrolled: CourseSummary[], progress: ProgressMap): LearningRow[] {
+  return enrolled.map((course) => {
+    const entries = Object.entries(progress).filter(([, p]) => p.courseId === course.id);
+    const total = course._count?.videos ?? 0;
+    const done = Math.min(total, entries.filter(([, p]) => p.completed).length);
+    const lastWatched = entries.length ? Math.max(...entries.map(([, p]) => p.updatedAt)) : null;
+    const resume = entries
+      .filter(([, p]) => !p.completed && resumePosition(p) !== null)
+      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)[0];
+    return { course, done, total, lastWatched, resumeLessonId: resume?.[0] ?? null };
+  });
 }
 
 /** Enrolled courses as scannable rows: one thin bar, "3 of 12 lessons", last watched, Continue. */

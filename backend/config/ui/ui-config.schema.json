@@ -541,6 +541,19 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "section": {
+          "description": "Group heading this item sits under; consecutive items with the same section form one group. Omit for no heading.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24
+        },
+        "count": {
+          "description": "A number shown beside the label: `catalogue` = published courses, `enrolled` = the viewer's courses.",
+          "enum": [
+            "catalogue",
+            "enrolled"
+          ]
         }
       }
     },

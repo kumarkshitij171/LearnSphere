@@ -23,7 +23,8 @@
         "icon": "LayoutDashboard",
         "href": "/dashboard",
         "roles": [],
-        "enabled": true
+        "enabled": true,
+        "section": "Learn"
       },
       {
         "id": "explore",
@@ -31,7 +32,19 @@
         "icon": "Compass",
         "href": "/explore",
         "roles": [],
-        "enabled": true
+        "enabled": true,
+        "section": "Learn",
+        "count": "catalogue"
+      },
+      {
+        "id": "my-courses",
+        "label": "My courses",
+        "icon": "Bookmark",
+        "href": "/my-courses",
+        "roles": [],
+        "enabled": true,
+        "section": "Learn",
+        "count": "enrolled"
       },
       {
         "id": "purchases",
@@ -39,7 +52,8 @@
         "icon": "Receipt",
         "href": "/orders",
         "roles": [],
-        "enabled": true
+        "enabled": true,
+        "section": "Account"
       },
       {
         "id": "studio",
@@ -50,7 +64,8 @@
           "INSTRUCTOR",
           "ADMIN"
         ],
-        "enabled": true
+        "enabled": true,
+        "section": "Teach"
       },
       {
         "id": "admin",
@@ -60,7 +75,8 @@
         "roles": [
           "ADMIN"
         ],
-        "enabled": true
+        "enabled": true,
+        "section": "Admin"
       },
       {
         "id": "ui-config",
@@ -70,7 +86,8 @@
         "roles": [
           "ADMIN"
         ],
-        "enabled": true
+        "enabled": true,
+        "section": "Admin"
       }
     ],
     "sidebarBottom": []

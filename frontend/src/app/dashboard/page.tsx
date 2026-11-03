@@ -6,7 +6,7 @@ import { ArrowRight, Compass, GraduationCap, Loader2, Plus } from 'lucide-react'
 import { AppShell } from '@/components/app-shell';
 import { CourseCard, CourseGrid } from '@/components/course-card';
 import { ContinuePanel } from '@/components/dashboard/continue-panel';
-import { CourseRows, type LearningRow } from '@/components/dashboard/course-rows';
+import { CourseRows, learningRows } from '@/components/dashboard/course-rows';
 import { StudioRows } from '@/components/dashboard/studio-rows';
 import { WeekPanel } from '@/components/dashboard/week-panel';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ import {
   type CurrentUser,
   type InstructorRequest,
 } from '@/lib/api';
-import { lastUnfinished, loadProgress, resumePosition, type ProgressMap } from '@/lib/progress';
+import { lastUnfinished, loadProgress, type ProgressMap } from '@/lib/progress';
 
 function greeting(date = new Date()): string {
   const h = date.getHours();
@@ -45,20 +45,6 @@ function SectionHeader({ title, href, linkLabel, action }: { title: string; href
         ) : null)}
     </div>
   );
-}
-
-/** Per enrolled course: lessons watched out of ready lessons, when it was last watched, where to land. */
-function learningRows(enrolled: CourseSummary[], progress: ProgressMap): LearningRow[] {
-  return enrolled.map((course) => {
-    const entries = Object.entries(progress).filter(([, p]) => p.courseId === course.id);
-    const total = course._count?.videos ?? 0;
-    const done = Math.min(total, entries.filter(([, p]) => p.completed).length);
-    const lastWatched = entries.length ? Math.max(...entries.map(([, p]) => p.updatedAt)) : null;
-    const resume = entries
-      .filter(([, p]) => !p.completed && resumePosition(p) !== null)
-      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)[0];
-    return { course, done, total, lastWatched, resumeLessonId: resume?.[0] ?? null };
-  });
 }
 
 export default function DashboardPage() {

@@ -18,6 +18,10 @@ export interface NavItemConfig {
   /** [] = everyone. Cosmetic: routes and APIs enforce access. */
   roles: UiRole[];
   enabled: boolean;
+  /** group heading; consecutive items with the same section form one group */
+  section?: string;
+  /** a number beside the label */
+  count?: 'catalogue' | 'enrolled';
 }
 
 export type HomeSectionType = 'features' | 'howItWorks' | 'faq' | 'finalCta';
