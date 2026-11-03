@@ -254,6 +254,39 @@ email; "still processing, we will email you" does not. There is no push channel
 for this yet — when `notification-service` Phase 2 lands, a `video.ready` push
 replaces the tail of the polling rather than the whole of it.
 
+### 8.3 Processing, honestly (LLD for review, 29 Oct 2026)
+
+> **Status: design for review — no code.** The upload leg already shows percent, speed and time left
+> (`lib/upload.ts`, Add-lesson dialog). What is missing is everything after the upload: today a
+> lesson sits in one opaque "Processing" state with fixed-interval polling and no end.
+
+**What the instructor sees on a lesson row in Studio:**
+
+| State | Row shows |
+|---|---|
+| `UPLOADED` (queued) | "Waiting for the encoder" · indeterminate bar |
+| `TRANSCODING`, `jobs` known | "Encoding 2 of 5 qualities · 64%" and a thin overall bar; expanding the row lists each rung (`1080p ✓`, `720p 41%`, `480p queued`) |
+| `TRANSCODING`, no `jobs` yet | "Encoding…" · indeterminate bar |
+| `READY` | ready badge, duration, top quality (as today) |
+| `FAILED` | the `errorCode` in words — *"This file couldn't be read. Upload an MP4, MOV or WebM."* (`CORRUPT_OR_UNSUPPORTED`), *"The upload didn't reach storage — upload it again."* (`SOURCE_MISSING`), *"Encoding kept failing — try again or upload a different file."* (`GAVE_UP`) — with **Retry** and **Replace file** (both exist) |
+
+Overall % = mean of rung progress (rungs that are done count 100).
+
+**Polling, with an end.** `pollUntil` gains backoff: 2 s → ×1.5 → capped at 10 s, while any lesson
+on the page is not `READY`/`FAILED`; it pauses while the tab is hidden. After **30 minutes** without
+a terminal state the row says *"Still processing — this is taking longer than usual"* with
+**Check again**, instead of spinning forever. A toast announces each lesson that becomes ready or
+fails (exists).
+
+**Students** never see processing lessons (Part VII), so none of this reaches them.
+
+**Files:** `lib/poll.ts` (backoff + hidden-tab pause + deadline), `lib/api/videos.service.ts`
+(`jobs` on `CourseVideo`), `components/studio/lesson-row.tsx` (states above),
+`components/studio/encode-progress.tsx` (new: rung list), `lib/lesson-status.ts` (error copy).
+
+**Depends on** transcoder Phase 3b-1/3b-2 for real numbers; until then the row falls back to the
+indeterminate states, so this can ship in either order.
+
 ### 8.2 Playback
 
 `lib/playback.ts` resolves a `hlsMasterPath` into a URL, and `lib/player.tsx`
@@ -530,6 +563,8 @@ route guard and the backend's `ADMIN` check are the controls.
 
 ### 15.2 Layout — VS Code's diff editor, in the app's dark palette
 
+> **Superseded by §15.7 (built 3 Nov 2026).** Kept for the record of what the first editor was.
+
 ```
 ┌──┬──────────────────────┬────────────────────────────────────────────────────────────────────┐
 │≡ │ TIMELINE             │ ● ui-config.json   v12 (published) ↔ Draft          ⇆ Inline  ⋯     │
@@ -578,6 +613,8 @@ route guard and the backend's `ADMIN` check are the controls.
 
 ### 15.4 Component layout
 
+> **Superseded**: the components as built are listed in §15.7's LLD.
+
 ```
 src/app/admin/ui-config/page.tsx          guard + data loading
 src/components/ui-config/
@@ -611,6 +648,145 @@ Component: workbench states — clean, dirty, invalid (publish disabled), `409`
 rebase. E2E (Playwright): admin edits a sidebar label → publishes → the sidebar
 shows it after reload; a student visiting `/admin/ui-config` is redirected, and its
 API calls return `403`.
+
+### 15.7 Redesign — two views, and a diff before every publish (proposed, 3 Nov 2026)
+
+> **Status: agreed (3 Nov 2026)**, with the recommended answer to each decision below:
+>
+> - inside the app shell;
+> - review as a right-hand sheet;
+> - side by side when there is room, inline when there is not.
+>
+> The clickable mockup was reviewed and then deleted on request; the build is now the reference.
+> This replaces §15.2's layout. §15.1, §15.5 and §15.3's autosave and conflict
+> rules stay as they are.
+
+**Why.** The workbench always shows a diff, so changing the config means typing into the right
+half of a diff editor, and history is a side panel inside that same view. The page does two jobs:
+
+- *changing the config*;
+- *understanding what changed, and when*.
+
+They get separate views, and the diff becomes the step in front of **Publish** instead of the
+editing surface.
+
+**Inspiration.**
+
+- **Firebase Remote Config:** a change-history page and "compare with selected version". Rollback
+  is confirmed and publishes a *new* version.
+- **LaunchDarkly:** every change-history entry opens to a list of changes plus a diff. Approval
+  requests make you check the change list and write a description first.
+- **GitHub's web editor:** you edit, then commit with a message. The diff is a review step, not
+  the editor.
+- **Common patterns:**
+  - a version is shown diffed against the one before it;
+  - preview and restore are separate actions;
+  - restore creates a new version.
+
+#### HLD
+
+**The page.**
+
+- It moves inside the app shell, with the app's sidebar and Studio tokens, and follows the
+  viewer's light or dark look.
+- The forced-dark VS Code chrome goes: title bar, activity bar and status bar.
+- **Header contents:**
+  - the title;
+  - a one-line explainer;
+  - a **Live** pill (`v6 · 2 h ago by …`);
+  - on the Configuration tab, **Discard draft** and **Review changes (n)**.
+- **Two tabs, kept in the URL:** `?tab=config` (the default) and
+  `?tab=history&v=5&compare=prev|live|draft`. Links can be shared and Back works.
+
+| View | For | Contents |
+| --- | --- | --- |
+| **Configuration** | Seeing and changing the config | A draft strip: base version, save state, changed sections, ±lines. A section outline, where a dot marks a changed section and a click jumps to it. **One editor showing the whole file, not a diff**, with lines changed against live marked in the gutter. A Preview panel with a Draft/Live toggle. Validity shown in the editor footer |
+| **Review changes** (a sheet over Configuration) | Seeing exactly what publishing does | Checks: valid against the schema, and the draft's base is still live. Changed sections and ±lines. The diff from live to draft, side by side or inline, with unchanged regions folded. A required message. **Publish vN+1** or Back to editing |
+| **Version history** | Understanding and undoing past changes | A searchable version list: number, message, author, time, and Live / Restored-from tags. The selected version's diff, with a switch between *changes in vN* (against the previous version, the default), *vN → live* and *vN → your draft*. Side-by-side or inline layout. **Copy to draft**, and **Restore vN…**, which asks for confirmation, publishes a new version and leaves the draft alone |
+
+#### LLD
+
+```text
+src/app/admin/ui-config/page.tsx      guard → <AppShell> → <UiConfigPage>
+src/components/ui-config/
+├── ui-config-page.tsx       header, tabs, URL state, data loading (replaces config-workbench.tsx)
+├── use-ui-config-draft.ts   draft text, autosave, parse, problems, 409 rebase, moved out of the workbench as they are
+├── config-tab.tsx           draft strip + outline + editor + preview
+├── config-editor.tsx        Monaco Editor (single, editable) + gutter marks for lines that differ from live
+├── section-outline.tsx      top-level keys of the parsed draft; "changed" from changedSections()
+├── review-sheet.tsx         checks, chips, diff, message, publish (replaces the publish dialog)
+├── history-tab.tsx          version list + detail
+├── version-list.tsx         version-timeline.tsx reworked: search, tags, arrow-key listbox
+├── version-diff.tsx         read-only Monaco DiffEditor, the one diff that review and history share
+├── restore-dialog.tsx       config-dialog.tsx narrowed to restore + discard
+├── config-preview.tsx       kept; gains the Draft/Live toggle
+└── problems-panel.tsx       kept; shown under the editor when there are problems
+```
+
+**Editors.**
+
+- The Configuration view uses Monaco's `Editor`, editable.
+- Review and history use `DiffEditor`, read-only, with `hideUnchangedRegions` on and a
+  side-by-side / inline toggle.
+- Gutter marks come from a line diff against live (`lib/ui-config/diff.ts`), applied with
+  `deltaDecorations`.
+
+**Theme.** Monaco gets `learnsphere-light` and `learnsphere-dark` themes built from the CSS
+tokens, and follows the viewer's look. Today it only has a dark theme.
+
+**API: no backend change.**
+
+- `versions`, `versions/:v`, `draft`, `validate`, `publish` and `rollback` already return
+  everything needed. Version metadata includes `createdBy`, `createdAt` and `rollbackOf`.
+- **Copy to draft** is a `PUT draft` with that version's config and the live `baseVersion`. It
+  asks first when a draft already exists.
+
+**Unchanged behaviour.**
+
+- 1.5 s autosave, `⌘S`, and the `beforeunload` warning.
+- A `409` still re-bases the draft; the Review sheet shows it as a failed check.
+- A `400` still fills Problems.
+
+**Small screens.** Editing stays desktop-only, so the "needs a wider screen" notice stays for the
+Configuration tab. History is readable on a phone, with the list stacked over the diff.
+
+#### Phases — all three built and verified, 3 Nov 2026
+
+Verified on local infra in Chrome:
+
+- an edit marks its lines and section;
+- Review shows only that change and will not publish without a message;
+- history compares a version with the previous one, live and the draft;
+- the Restore dialog opens and Discard returns the draft to live;
+- the dark look themes the editor too.
+
+`tsc`, lint, `check-styles` (no longer exempting `components/ui-config/`), 28 vitest tests
+including `lineChanges`, and `next build` all pass. Publish and restore themselves were not run, to
+leave the local config as it was; their API calls are unchanged from the old workbench.
+
+1. **U-A — Structure.**
+   - Build: the app-shell page, tabs with URL state, the Configuration view (single editor,
+     gutter marks, outline, preview), and the Review sheet in place of the publish dialog. The
+     History tab reuses today's timeline and diff for now.
+   - *Verify:* edit → Review shows exactly the change → publish → live updates. The `409` and
+     invalid states still behave.
+2. **U-B — History.**
+   - Build: the version list with search and tags, the previous / live / draft compare switch,
+     the restore dialog, copy to draft, and `v` + `compare` in the URL.
+   - *Verify:* every compare mode works, restore creates vN+1, and the draft is untouched.
+3. **U-C — Polish.**
+   - Build:
+     - light and dark Monaco themes;
+     - keyboard support: arrow keys in the list, and `⌘↵` to publish from the sheet;
+     - empty states;
+     - component tests for tab state and the publish gate;
+     - the existing end-to-end test updated.
+
+#### Decisions for you
+
+1. **Placement.** Inside the app shell (recommended), or keep a full-screen editor?
+2. **Review.** A right-hand sheet (recommended), or a full-page step?
+3. **Diff layout.** Side by side by default at ≥1280 px and inline below that (recommended)?
 
 ---
 
@@ -1608,6 +1784,12 @@ URL shown to every student is a tracking pixel waiting to happen.
   in the first or last second.
 - **Seed:** the pick is seeded by the video id, so a retried encode produces the same frame.
 - **Short clips:** a clip under 3 s gets its middle frame.
+
+**Grouped sidebar (config v4).** Each nav item takes two optional fields:
+- `section`: a group heading. Consecutive items with the same section form one group, and a collapsed sidebar shows a thin rule instead.
+- `count`: `catalogue` shows the number of published courses, and `enrolled` shows the viewer's courses.
+
+The counts are fetched only when a visible item asks for one. The default groups are Learn (Home, Explore, My courses), Account (Purchases), Teach (Studio) and Admin. *My courses* (`/my-courses`) lists every enrolled course in In progress and Completed tabs. Both fields are optional, so this is an additive schema change and needed no migration. It was published to the database as v4.
 
 **Studio:** a `ThumbnailField` sits in the course details and the lesson editor. It saves the moment a
 file is picked, shows upload progress, and offers "Use automatic" to remove a custom image.

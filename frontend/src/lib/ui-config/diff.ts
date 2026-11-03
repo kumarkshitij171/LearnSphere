@@ -1,4 +1,4 @@
-// Pure helpers for the editor's status bar and publish dialog.
+// Pure helpers for the UI-config editor: gutter marks, the review sheet and version history.
 
 /** Lines added and removed between two texts (LCS over lines; documents are capped at 64 KB). */
 export function lineDiffStats(before: string, after: string): { added: number; removed: number } {
@@ -26,6 +26,77 @@ export function lineDiffStats(before: string, after: string): { added: number; r
   }
   const common = prev[midB.length];
   return { added: midB.length - common, removed: midA.length - common };
+}
+
+export interface LineChanges {
+  /** 1-based lines of `after` that are new */
+  added: number[];
+  /** 1-based lines of `after` that replace lines of `before` */
+  modified: number[];
+  /** 1-based lines of `after` that have removed lines directly above them */
+  removedAbove: number[];
+}
+
+// Beyond this many cells the LCS table is not worth building; the whole middle is marked modified.
+const MAX_LCS_CELLS = 4_000_000;
+
+/** Which lines of `after` differ from `before`, for VS Code-style gutter marks. */
+export function lineChanges(before: string, after: string): LineChanges {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  const result: LineChanges = { added: [], modified: [], removedAbove: [] };
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  const n = endA - start;
+  const m = endB - start;
+  if (n === 0 && m === 0) return result;
+  if (n * m > MAX_LCS_CELLS) {
+    for (let j = 0; j < m; j++) result.modified.push(start + j + 1);
+    return result;
+  }
+
+  // suffix LCS lengths, so the walk below can go forwards
+  const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] = a[start + i] === b[start + j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+
+  let removed = 0;
+  let inserted: number[] = [];
+  const flush = (nextLine: number) => {
+    if (inserted.length) {
+      inserted.forEach((line, k) => (k < removed ? result.modified : result.added).push(line));
+    } else if (removed) {
+      result.removedAbove.push(Math.max(1, Math.min(b.length, nextLine)));
+    }
+    removed = 0;
+    inserted = [];
+  };
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[start + i] === b[start + j]) {
+      flush(start + j + 1);
+      i++;
+      j++;
+    } else if (i < n && (j === m || lcs[i + 1][j] >= lcs[i][j + 1])) {
+      removed++;
+      i++;
+    } else {
+      inserted.push(start + j + 1);
+      j++;
+    }
+  }
+  flush(start + m + 1);
+  return result;
 }
 
 const stable = (value: unknown): string => {

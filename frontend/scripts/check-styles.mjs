@@ -1,11 +1,11 @@
 // Fails the lint when the generated look creeps back (SYSTEM_DESIGN.md §30.5). Colour must come from
-// tokens so both looks work; the player and the UI-config editor are always dark and are exempt.
+// tokens so both looks work; the player is always dark and is exempt.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = new URL('../src/', import.meta.url).pathname;
 // the landing page's player illustration is drawn over video, like the player itself
-const EXEMPT = ['components/player/', 'components/ui-config/', 'components/landing/product-frame.tsx'];
+const EXEMPT = ['components/player/', 'components/landing/product-frame.tsx'];
 
 const RULES = [
   [/\b(?:text|bg|border|ring|divide|from|to|via|outline|fill|stroke)-(?:lime|emerald|green|teal|red|rose|amber|yellow|orange|sky|blue|indigo|violet|purple|fuchsia|pink|cyan|zinc|neutral|gray|slate|stone)-\d{2,3}\b/, 'raw palette colour — use a semantic token (success, warning, danger, info, …)'],

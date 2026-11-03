@@ -194,5 +194,19 @@
 @layer components {
   @keyframes ui-sheet-in { from { transform: translateX(-100%); } to { transform: none; } }
   .ui-sheet[data-state='open'] { animation: ui-sheet-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-  @media (prefers-reduced-motion: reduce) { .ui-sheet[data-state='open'] { animation: none; } }
+  @keyframes ui-sheet-right-in { from { transform: translateX(100%); } to { transform: none; } }
+  .ui-sheet-right[data-state='open'] { animation: ui-sheet-right-in 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+  @media (prefers-reduced-motion: reduce) { .ui-sheet[data-state='open'], .ui-sheet-right[data-state='open'] { animation: none; } }
+
+  /* UI-config editor: VS Code-style gutter marks for lines that differ from what is live */
+  .monaco-editor .ls-gutter-modified { border-left: 3px solid hsl(var(--info)); margin-left: 4px; }
+  .monaco-editor .ls-gutter-added { border-left: 3px solid hsl(var(--success)); margin-left: 4px; }
+  .monaco-editor .ls-gutter-removed::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 4px;
+    border: 4px solid transparent;
+    border-left-color: hsl(var(--danger));
+  }
 }
